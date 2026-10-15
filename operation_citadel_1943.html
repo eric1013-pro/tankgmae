@@ -1,0 +1,3424 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OPERATION CITADEL: 1943 - 3D Tactical Tank & Fire Support Simulator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js r128 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Noto+Sans+KR:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --hud-amber: #f59e0b;
+            --hud-red: #ef4444;
+            --hud-green: #10b981;
+            --hud-dark: rgba(10, 13, 15, 0.92);
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #07090a;
+            font-family: 'Noto Sans KR', sans-serif;
+            touch-action: none;
+        }
+        .font-military {
+            font-family: 'Black Ops One', cursive;
+            letter-spacing: 0.06em;
+        }
+        .font-mono-tech {
+            font-family: 'Share Tech Mono', monospace;
+        }
+        
+        .scanlines {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0, 0, 0, 0.28) 50%,
+                rgba(0, 0, 0, 0.28)
+            );
+            background-size: 100% 4px;
+        }
+        .vignette- cinematic {
+            background: radial-gradient(circle at center, transparent 45%, rgba(0, 0, 0, 0.85) 100%);
+        }
+        .tactical-panel {
+            background: linear-gradient(145deg, rgba(20, 25, 28, 0.94) 0%, rgba(10, 13, 15, 0.96) 100%);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(245, 158, 11, 0.38);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 0 18px rgba(245, 158, 11, 0.05);
+            position: relative;
+        }
+        .rivet-corners::before, .rivet-corners::after {
+            content: '';
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: rgba(245, 158, 11, 0.55);
+            pointer-events: none;
+        }
+        .rivet-corners::before { top: 5px; left: 5px; box-shadow: calc(100% - 10px) 0 0 rgba(245, 158, 11, 0.55); }
+        .rivet-corners::after { bottom: 5px; left: 5px; box-shadow: calc(100% - 10px) 0 0 rgba(245, 158, 11, 0.55); }
+
+        .weapon-card {
+            transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(180deg, rgba(24, 30, 34, 0.92) 0%, rgba(12, 15, 18, 0.96) 100%);
+            border: 1px solid rgba(120, 113, 108, 0.35);
+        }
+        .weapon-card.active {
+            border-color: #f59e0b;
+            background: linear-gradient(180deg, rgba(69, 39, 9, 0.88) 0%, rgba(28, 19, 10, 0.95) 100%);
+            transform: translateY(-5px);
+            box-shadow: 0 8px 24px rgba(245, 158, 11, 0.35), inset 0 0 15px rgba(245, 158, 11, 0.25);
+        }
+        .weapon-card:active {
+            transform: scale(0.96);
+        }
+        .cam-btn {
+            transition: all 0.15s ease;
+        }
+        .cam-btn.active {
+            background: rgba(245, 158, 11, 0.28);
+            border-color: #f59e0b;
+            color: #fef08a;
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+        }
+
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translate(-50%, 0) scale(0.85); }
+            20% { opacity: 1; transform: translate(-50%, -14px) scale(1.1); }
+            100% { opacity: 0; transform: translate(-50%, -52px) scale(0.95); }
+        }
+        .combat-float-text {
+            position: absolute;
+            pointer-events: none;
+            animation: floatUp 1.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.98);
+            z-index: 35;
+            white-space: nowrap;
+        }
+        @keyframes radarSweep {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .radar-sweep-line {
+            animation: radarSweep 3.2s linear infinite;
+            transform-origin: bottom center;
+        }
+        .damage-flash {
+            box-shadow: inset 0 0 110px 45px rgba(220, 38, 38, 0.82);
+            transition: opacity 0.25s ease-out;
+        }
+        #canvas-container canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body class="relative w-full h-full text-stone-100 select-none overflow-hidden">
+
+    <!-- 3D WebGL Viewport -->
+    <div id="canvas-container" class="absolute inset-0 w-full h-full z-0"></div>
+
+    <!-- CRT Scanline & Vignette Overlay -->
+    <div class="fixed inset-0 pointer-events-none scanlines z-10 opacity-35"></div>
+    <div class="fixed inset-0 pointer-events-none vignette-cinematic z-10 opacity-60"></div>
+    <div id="damage-vignette" class="fixed inset-0 pointer-events-none z-10 damage-flash opacity-0"></div>
+
+    <div id="sniper-overlay" class="fixed inset-0 pointer-events-none z-15 hidden items-center justify-center">
+        <div class="relative w-[330px] h-[330px] sm:w-[460px] sm:h-[460px] rounded-full border-4 border-stone-800 shadow-[0_0_0_9999px_rgba(4,6,8,0.82)] flex items-center justify-center">
+            <!-- Inner Optical Ring -->
+            <div class="absolute inset-2 rounded-full border border-amber-500/50"></div>
+            <!-- Authentic WWII Stadia Sight SVG -->
+            <svg viewBox="0 0 200 200" class="w-full h-full opacity-85">
+                <line x1="0" y1="100" x2="88" y2="100" stroke="#f59e0b" stroke-width="0.8"/>
+                <line x1="112" y1="100" x2="200" y2="100" stroke="#f59e0b" stroke-width="0.8"/>
+                <line x1="100" y1="112" x2="100" y2="200" stroke="#f59e0b" stroke-width="0.8"/>
+                <line x1="100" y1="0" x2="100" y2="40" stroke="#f59e0b" stroke-width="0.6" stroke-dasharray="3,3"/>
+                <polygon points="100,95 96,103 104,103" fill="none" stroke="#ef4444" stroke-width="1.2"/>
+                <polygon points="65,100 62,105 68,105" fill="#f59e0b"/>
+                <polygon points="80,100 78,104 82,104" fill="#f59e0b"/>
+                <polygon points="120,100 118,104 122,104" fill="#f59e0b"/>
+                <polygon points="135,100 132,105 138,105" fill="#f59e0b"/>
+                <path d="M 35 65 A 75 75 0 0 1 165 65" fill="none" stroke="#f59e0b" stroke-width="0.7" stroke-dasharray="2,4"/>
+                <text x="90" y="26" fill="#f59e0b" font-size="5" font-family="monospace">RANGE: 400m - 1200m</text>
+            </svg>
+            <div class="absolute top-10 inset-x-0 flex justify-between px-12 font-mono-tech text-[10px] sm:text-xs text-amber-400">
+                <span id="scope-optic-name">OPTIC: TZF-9b x2.5</span>
+                <span id="scope-dist-readout">DIST: 420m</span>
+            </div>
+            <div class="absolute bottom-9 inset-x-0 text-center font-mono-tech text-[10px] sm:text-xs">
+                <span id="scope-pen-readout" class="px-2 py-0.5 rounded bg-black/80 border border-amber-500/40 text-emerald-400">
+                    장갑 관통 분석: 계산중...
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- A-2: SHELL KILL-CAM TELEMETRY OVERLAY -->
+    <div id="killcam-overlay" class="fixed inset-0 pointer-events-none z-25 hidden flex-col justify-between p-4 sm:p-8 border-[6px] border-amber-500/40 bg-radial from-transparent via-transparent to-black/75">
+        <div class="flex items-center justify-between max-w-4xl w-full mx-auto mt-14 sm:mt-16">
+            <div class="tactical-panel px-3 py-1.5 rounded-lg border border-red-500/70 flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                <span class="font-mono-tech text-xs sm:text-sm text-red-400 font-bold tracking-widest">BALLISTIC KILL-CAM // SLOW-MOTION</span>
+            </div>
+            <div class="tactical-panel px-3 py-1.5 rounded-lg font-mono-tech text-xs text-amber-300">
+                <span id="killcam-shell-info">152mm APHE // VELOCITY: 655 m/s</span>
+            </div>
+        </div>
+        <div class="mb-24 sm:mb-28 text-center">
+            <span id="killcam-target-info" class="inline-block tactical-panel px-4 py-1.5 rounded-full font-mono-tech text-xs sm:text-sm text-white border border-amber-400">
+                🎯 탄도 추적 중... 장갑 충돌 임박
+            </span>
+        </div>
+    </div>
+
+    <!-- Dynamic 2D Overlay for Enemy Health Bars & Floating Text -->
+    <div id="world-ui-layer" class="fixed inset-0 pointer-events-none z-20 overflow-hidden"></div>
+
+    <div id="story-prologue-modal" class="fixed inset-0 z-50 flex flex-col justify-between p-4 sm:p-8 bg-gradient-to-b from-black/85 via-black/25 to-black/90">
+        <div class="flex items-center justify-between max-w-5xl w-full mx-auto pt-1">
+            <div class="flex items-center gap-2.5">
+                <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-600 animate-ping"></span>
+                <span class="font-mono-tech text-xs sm:text-sm text-amber-400 tracking-widest">HISTORICAL ARCHIVE // 1943 KURSK SALIENT</span>
+            </div>
+            <button onclick="skipStoryToFactionSelect()" class="tactical-panel px-3.5 py-1.5 rounded-lg font-mono-tech text-xs text-stone-300 hover:text-amber-300 hover:border-amber-400 transition active:scale-95">
+                브리핑 건너뛰기 SKIP ⏭
+            </button>
+        </div>
+
+        <div class="my-auto text-center max-w-3xl mx-auto px-2 pointer-events-none">
+            <div id="story-chapter-tag" class="inline-block px-3 py-1 rounded bg-amber-500/20 border border-amber-500/50 font-mono-tech text-xs sm:text-sm text-amber-300 mb-2 tracking-widest">
+                CHAPTER I // 1943년 7월 4일 밤, 쿠르스크 돌출부
+            </div>
+            <h1 id="story-chapter-title" class="text-2xl sm:text-5xl font-black text-white tracking-tight drop-shadow-[0_4px_20px_rgba(0,0,0,0.95)] mb-3">
+                폭풍 전야: 강철의 바다
+            </h1>
+        </div>
+
+        <div class="max-w-3xl w-full mx-auto tactical-panel rivet-corners rounded-2xl p-4 sm:p-6 border-2 border-amber-500/50">
+            <div class="flex items-center justify-between mb-3 border-b border-stone-800 pb-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-mono-tech text-amber-400 font-bold">🎙️ 전선 종군 기록</span>
+                    <span id="story-coord-text" class="text-[10px] font-mono-tech text-stone-400 hidden sm:inline">51°02′N 36°43′E // PROKHOROVKA SECTOR</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <div id="story-dot-0" class="w-6 h-1.5 rounded-full bg-amber-500 transition-all"></div>
+                    <div id="story-dot-1" class="w-6 h-1.5 rounded-full bg-stone-700 transition-all"></div>
+                    <div id="story-dot-2" class="w-6 h-1.5 rounded-full bg-stone-700 transition-all"></div>
+                    <div id="story-dot-3" class="w-6 h-1.5 rounded-full bg-stone-700 transition-all"></div>
+                </div>
+            </div>
+
+            <p id="story-body-text" class="text-xs sm:text-base text-stone-100 leading-relaxed min-h-[4.5rem] sm:min-h-[4.8rem] font-normal mb-4"></p>
+
+            <div class="flex items-center justify-between gap-3">
+                <span id="story-audio-hint" class="text-[11px] font-mono-tech text-stone-400">🔊 터치 시 실제 전장 포성과 무전 음향이 재생됩니다</span>
+                <div class="flex items-center gap-2 ml-auto">
+                    <button id="btn-story-next" onclick="advanceStoryChapter()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-xs sm:text-sm tracking-wide shadow-[0_0_20px_rgba(245,158,11,0.45)] transition active:scale-95 flex items-center gap-1.5">
+                        <span id="btn-story-next-label">다음 기록 보기</span> <span>▶</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <header id="top-hud" class="fixed top-0 left-0 right-0 z-30 p-2 sm:p-3 pointer-events-none hidden flex-col gap-1.5 max-w-6xl mx-auto">
+        <div class="flex items-start justify-between gap-2">
+            <!-- Left: Faction, Phase & Weather/Time Indicator -->
+            <div class="tactical-panel rivet-corners rounded-xl px-3 py-2 flex items-center gap-2.5 pointer-events-auto">
+                <div id="hud-faction-badge" class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-red-800 border border-amber-400/70 flex items-center justify-center font-bold text-base shadow-inner shrink-0">
+                    ★
+                </div>
+                <div>
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <span id="hud-phase-badge" class="text-[10px] font-mono-tech px-1.5 py-0.5 rounded bg-amber-500/25 text-amber-300 border border-amber-500/50 font-bold">PHASE 1/3</span>
+                        <span id="hud-phase-title" class="text-xs sm:text-sm font-black text-white tracking-tight">전초선 돌파 작전</span>
+                        <span id="hud-weather-badge" class="text-[10px] font-mono-tech px-1.5 py-0.5 rounded bg-sky-950/90 text-sky-300 border border-sky-500/40">🌅 04:30 새벽안개</span>
+                        <span id="hud-timer" class="text-[11px] font-mono-tech text-amber-400">00:00</span>
+                    </div>
+                    <div class="flex items-center gap-1 mt-1.5">
+                        <div id="step-p1" class="h-1.5 w-10 sm:w-14 rounded-full bg-amber-500 transition-all"></div>
+                        <div id="step-p2" class="h-1.5 w-10 sm:w-14 rounded-full bg-stone-700 transition-all"></div>
+                        <div id="step-p3" class="h-1.5 w-10 sm:w-14 rounded-full bg-stone-700 transition-all"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: 6-Mode Multi-Camera Switcher & Auto Kill-Cam Toggle -->
+            <div class="flex flex-col items-end gap-1.5 pointer-events-auto">
+                <div class="tactical-panel rounded-xl p-1 flex items-center gap-1 flex-wrap justify-end">
+                    <button id="cam-btn-0" onclick="setCameraMode(0)" class="cam-btn active px-2 py-1 rounded-lg text-[10px] sm:text-xs font-mono-tech text-stone-300 border border-transparent flex items-center gap-1">
+                        <span>🗺️</span><span>사령부</span>
+                    </button>
+                    <button id="cam-btn-1" onclick="setCameraMode(1)" class="cam-btn px-2 py-1 rounded-lg text-[10px] sm:text-xs font-mono-tech text-stone-300 border border-transparent flex items-center gap-1">
+                        <span>🪖</span><span>전차장</span>
+                    </button>
+                    <button id="cam-btn-2" onclick="setCameraMode(2)" class="cam-btn px-2 py-1 rounded-lg text-[10px] sm:text-xs font-mono-tech text-stone-300 border border-transparent flex items-center gap-1">
+                        <span>🎯</span><span>조준경</span>
+                    </button>
+                    <button id="cam-btn-3" onclick="setCameraMode(3)" class="cam-btn px-2 py-1 rounded-lg text-[10px] sm:text-xs font-mono-tech text-stone-300 border border-transparent hidden sm:flex items-center gap-1">
+                        <span>✈️</span><span>항공정찰</span>
+                    </button>
+                    <button id="cam-btn-4" onclick="setCameraMode(4)" class="cam-btn px-2 py-1 rounded-lg text-[10px] sm:text-xs font-mono-tech text-stone-300 border border-transparent hidden sm:flex items-center gap-1">
+                        <span>🎬</span><span>측면시점</span>
+                    </button>
+                    <button id="btn-killcam-toggle" onclick="toggleAutoKillCam()" class="px-2 py-1 rounded-lg text-[10px] sm:text-xs font-mono-tech bg-red-950/90 text-red-300 border border-red-500/50 hover:bg-red-900/80 active:scale-95 flex items-center gap-1">
+                        <span>🚀</span><span id="killcam-toggle-label">포탄킬캠 ON</span>
+                    </button>
+                    <button id="btn-audio-toggle" onclick="toggleMute()" class="px-2 py-1 rounded-lg text-xs bg-stone-800/80 text-stone-200 hover:bg-stone-700 active:scale-95">
+                        🔊
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row 2: Allied Integrity, Enemy Forces, and Live Radar -->
+        <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-5 sm:col-span-5 tactical-panel rounded-xl px-2.5 py-1.5">
+                <div class="flex justify-between items-center text-[10px] sm:text-[11px] font-mono-tech mb-1">
+                    <span class="text-emerald-400 font-bold truncate">🛡️ 아군 기갑 방어선</span>
+                    <span id="allied-hp-text" class="text-stone-100 font-bold">1000/1000</span>
+                </div>
+                <div class="w-full h-2 bg-stone-950 rounded-full overflow-hidden border border-stone-700">
+                    <div id="allied-hp-bar" class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-200" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <div class="col-span-5 sm:col-span-5 tactical-panel rounded-xl px-2.5 py-1.5">
+                <div class="flex justify-between items-center text-[10px] sm:text-[11px] font-mono-tech mb-1">
+                    <span class="text-red-400 font-bold truncate">🎯 적 기갑 잔여전력</span>
+                    <span id="enemy-count-text" class="text-stone-100 font-bold">5기 생존</span>
+                </div>
+                <div class="w-full h-2 bg-stone-950 rounded-full overflow-hidden border border-stone-700">
+                    <div id="enemy-wave-bar" class="h-full bg-gradient-to-r from-red-600 to-amber-500 transition-all duration-200" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <div class="col-span-2 flex justify-end">
+                <div class="tactical-panel rounded-full w-12 h-12 sm:w-14 sm:h-14 p-0.5 border border-emerald-500/50 relative overflow-hidden flex items-center justify-center bg-emerald-950/40">
+                    <canvas id="radar-canvas" width="56" height="56" class="w-full h-full rounded-full"></canvas>
+                    <div class="radar-sweep-line absolute w-0.5 h-1/2 bg-emerald-400/60 top-0 left-1/2 pointer-events-none"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row 3: Live Radio Comms & Objective Ticker -->
+        <div class="tactical-panel rounded-lg px-3 py-1 flex items-center justify-between border-l-4 border-l-amber-500">
+            <div class="flex items-center gap-2 overflow-hidden">
+                <span id="radio-badge" class="text-[10px] font-mono-tech bg-amber-500 text-black font-extrabold px-1.5 py-0.5 rounded shrink-0">무전수신</span>
+                <p id="hud-objective-desc" class="text-xs text-stone-200 truncate">화면의 적 진지를 터치(또는 드래그)하여 모든 화기를 일제 사격하십시오.</p>
+            </div>
+            <span id="hud-cam-indicator" class="text-[10px] font-mono-tech text-amber-300 shrink-0 ml-2 hidden sm:inline">CAM: 전술사령부</span>
+        </div>
+    </header>
+
+    <!-- PHASE BRIEFING BANNER -->
+    <div id="phase-banner" class="fixed inset-x-0 top-1/4 z-40 pointer-events-none flex justify-center px-4 hidden">
+        <div class="tactical-panel rivet-corners border-2 border-amber-500 rounded-2xl p-5 sm:p-6 max-w-lg w-full text-center shadow-[0_0_60px_rgba(0,0,0,0.95)] transform transition-all">
+            <div id="banner-subtitle" class="text-xs font-mono-tech text-amber-400 tracking-widest uppercase mb-1">OPERATION CITADEL // TACTICAL DIRECTIVE</div>
+            <h2 id="banner-title" class="text-xl sm:text-2xl font-black text-white mb-2 tracking-tight">작전 1단계: 무인지대 돌파</h2>
+            <p id="banner-desc" class="text-xs sm:text-sm text-stone-300 leading-relaxed">적의 최전방 참호와 기관총 벙커, 대전차포 진지를 사격하여 아군 전차의 진격로를 확보하십시오!</p>
+        </div>
+    </div>
+
+    <footer id="bottom-hud" class="fixed bottom-0 left-0 right-0 z-30 p-2 sm:p-3 pointer-events-none hidden flex-col gap-2 max-w-6xl mx-auto">
+        <div class="flex items-center justify-between gap-1.5 pointer-events-auto flex-wrap">
+            <div class="flex items-center gap-1.5">
+                <!-- Field Repair Button -->
+                <button id="btn-support-repair" onclick="useRepairSupport()" class="tactical-panel px-2.5 py-1.5 rounded-lg flex items-center gap-1 text-xs font-bold text-emerald-300 border border-emerald-500/40 active:scale-95 relative overflow-hidden">
+                    <span>🔧 야전수리</span>
+                    <span id="repair-cd-text" class="font-mono-tech text-[10px] bg-emerald-950/90 px-1 rounded text-emerald-300">+320</span>
+                    <div id="repair-cd-overlay" class="absolute inset-0 bg-black/80 hidden items-center justify-center font-mono-tech text-xs text-amber-400"></div>
+                </button>
+                <!-- Tactical Smoke Screen Button -->
+                <button id="btn-support-smoke" onclick="useSmokeSupport()" class="tactical-panel px-2.5 py-1.5 rounded-lg flex items-center gap-1 text-xs font-bold text-sky-300 border border-sky-500/40 active:scale-95 relative overflow-hidden">
+                    <span>💨 연막차장</span>
+                    <span class="font-mono-tech text-[10px] bg-sky-950/90 px-1 rounded text-sky-300">회피72%</span>
+                    <div id="smoke-cd-overlay" class="absolute inset-0 bg-black/80 hidden items-center justify-center font-mono-tech text-xs text-amber-400"></div>
+                </button>
+                <!-- A-3: Launch Parachute Illumination Flare Button -->
+                <button id="btn-support-flare" onclick="launchManualFlare()" class="tactical-panel px-2.5 py-1.5 rounded-lg flex items-center gap-1 text-xs font-bold text-amber-300 border border-amber-500/40 active:scale-95">
+                    <span>🌟 조명탄투하</span>
+                </button>
+                <!-- Mobile Camera Cycle Button -->
+                <button onclick="cycleCameraMode()" class="tactical-panel px-2.5 py-1.5 rounded-lg flex items-center gap-1 text-xs font-bold text-amber-200 border border-amber-500/40 active:scale-95 sm:hidden">
+                    <span>🎥 시점</span>
+                </button>
+            </div>
+
+            <!-- Active Weapon Penetration & Ballistics Indicator -->
+            <div class="tactical-panel px-3 py-1 rounded-lg text-[11px] font-mono-tech text-amber-300 flex items-center gap-2 ml-auto">
+                <span class="inline-block w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                <span id="selected-weapon-hint" class="truncate max-w-[190px] sm:max-w-none">전장 터치/드래그로 즉시 사격</span>
+            </div>
+        </div>
+
+        <!-- 4 Iconic Weapon Cards Grid -->
+        <div class="grid grid-cols-4 gap-1.5 sm:gap-2.5 pointer-events-auto">
+            <!-- Slot 1: Heavy Machine Gun -->
+            <button id="wpn-card-0" onclick="selectWeapon(0)" class="weapon-card active rounded-xl p-2 sm:p-2.5 text-left flex flex-col justify-between h-24 sm:h-28">
+                <div class="flex justify-between items-start w-full">
+                    <span class="text-[9px] sm:text-[10px] font-mono-tech px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">[1] 기관총</span>
+                    <span id="wpn-cal-0" class="text-[9px] font-mono-tech text-stone-400">7.62mm</span>
+                </div>
+                <div class="my-0.5">
+                    <div id="wpn-name-0" class="text-xs sm:text-sm font-black text-white leading-tight truncate">Maxim / PPSh</div>
+                    <div id="wpn-sub-0" class="text-[10px] text-stone-400 truncate">관통 18mm · 고속연사</div>
+                </div>
+                <div class="w-full">
+                    <div class="flex justify-between text-[9px] font-mono-tech text-stone-300 mb-0.5">
+                        <span>총열열기</span>
+                        <span id="wpn-status-0" class="text-emerald-400 font-bold">연사 가능</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-stone-950 rounded-full overflow-hidden border border-stone-800">
+                        <div id="wpn-bar-0" class="h-full bg-amber-500 transition-all duration-75" style="width: 0%;"></div>
+                    </div>
+                </div>
+            </button>
+
+            <!-- Slot 2: Medium Tank Salvo -->
+            <button id="wpn-card-1" onclick="selectWeapon(1)" class="weapon-card rounded-xl p-2 sm:p-2.5 text-left flex flex-col justify-between h-24 sm:h-28">
+                <div class="flex justify-between items-start w-full">
+                    <span class="text-[9px] sm:text-[10px] font-mono-tech px-1.5 py-0.5 rounded bg-stone-800 text-stone-200 font-bold border border-stone-600/40">[2] 주력전차</span>
+                    <span id="wpn-cal-1" class="text-[9px] font-mono-tech text-amber-400/80">85mm AP</span>
+                </div>
+                <div class="my-0.5">
+                    <div id="wpn-name-1" class="text-xs sm:text-sm font-black text-white leading-tight truncate">T-34-85 일제포격</div>
+                    <div id="wpn-sub-1" class="text-[10px] text-stone-400 truncate">궤도파손 · 2문 제사</div>
+                </div>
+                <div class="w-full">
+                    <div class="flex justify-between text-[9px] font-mono-tech text-stone-300 mb-0.5">
+                        <span>포탄장전</span>
+                        <span id="wpn-status-1" class="text-emerald-400 font-bold">READY</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-stone-950 rounded-full overflow-hidden border border-stone-800">
+                        <div id="wpn-bar-1" class="h-full bg-emerald-400 transition-all duration-75" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </button>
+
+            <!-- Slot 3: Heavy Tank / Siege Gun (Triggers Shell Kill-Cam!) -->
+            <button id="wpn-card-2" onclick="selectWeapon(2)" class="weapon-card rounded-xl p-2 sm:p-2.5 text-left flex flex-col justify-between h-24 sm:h-28">
+                <div class="flex justify-between items-start w-full">
+                    <span class="text-[9px] sm:text-[10px] font-mono-tech px-1.5 py-0.5 rounded bg-stone-800 text-stone-200 font-bold border border-stone-600/40">[3] 중전차포</span>
+                    <span id="wpn-cal-2" class="text-[9px] font-mono-tech text-orange-400">152mm HE</span>
+                </div>
+                <div class="my-0.5">
+                    <div id="wpn-name-2" class="text-xs sm:text-sm font-black text-white leading-tight truncate">KV-2 152mm</div>
+                    <div id="wpn-sub-2" class="text-[10px] text-stone-400 truncate">포탄킬캠 · 절대관통</div>
+                </div>
+                <div class="w-full">
+                    <div class="flex justify-between text-[9px] font-mono-tech text-stone-300 mb-0.5">
+                        <span>대구경장전</span>
+                        <span id="wpn-status-2" class="text-emerald-400 font-bold">READY</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-stone-950 rounded-full overflow-hidden border border-stone-800">
+                        <div id="wpn-bar-2" class="h-full bg-emerald-400 transition-all duration-75" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </button>
+
+            <!-- Slot 4: 3D Bomber Squadron & Rocket Barrage -->
+            <button id="wpn-card-3" onclick="selectWeapon(3)" class="weapon-card rounded-xl p-2 sm:p-2.5 text-left flex flex-col justify-between h-24 sm:h-28">
+                <div class="flex justify-between items-start w-full">
+                    <span class="text-[9px] sm:text-[10px] font-mono-tech px-1.5 py-0.5 rounded bg-red-950 text-red-300 font-bold border border-red-500/40">[4] 항공/포병</span>
+                    <span id="wpn-cal-3" class="text-[9px] font-mono-tech text-red-400">IL-2 & 카튜샤</span>
+                </div>
+                <div class="my-0.5">
+                    <div id="wpn-name-3" class="text-xs sm:text-sm font-black text-amber-300 leading-tight truncate">IL-2 편대 & 카튜샤</div>
+                    <div id="wpn-sub-3" class="text-[10px] text-stone-400 truncate">3D 편대 급강하 폭격</div>
+                </div>
+                <div class="w-full">
+                    <div class="flex justify-between text-[9px] font-mono-tech text-stone-300 mb-0.5">
+                        <span>편대호출</span>
+                        <span id="wpn-status-3" class="text-emerald-400 font-bold">READY</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-stone-950 rounded-full overflow-hidden border border-stone-800">
+                        <div id="wpn-bar-3" class="h-full bg-red-500 transition-all duration-75" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </button>
+        </div>
+    </footer>
+
+    <div id="intro-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto">
+        <div class="tactical-panel rivet-corners rounded-2xl max-w-2xl w-full p-5 sm:p-7 border-2 border-amber-500/60 shadow-2xl my-auto">
+            <div class="flex items-center justify-between border-b border-stone-700 pb-3 mb-4">
+                <div>
+                    <span class="text-[10px] sm:text-xs font-mono-tech text-amber-400 tracking-widest block">SUPREME COMMAND DOSSIER // JULY 1943</span>
+                    <h1 class="text-2xl sm:text-4xl font-military text-white tracking-wider">OPERATION CITADEL: 1943</h1>
+                </div>
+                <button onclick="replayStoryPrologue()" class="px-2.5 py-1 rounded bg-stone-800 hover:bg-stone-700 border border-amber-500/50 text-amber-300 font-mono-tech text-xs transition">
+                    🎬 프롤로그 다시보기
+                </button>
+            </div>
+
+            <div class="bg-black/60 border border-stone-700/80 rounded-xl p-3.5 sm:p-4 mb-5">
+                <div class="flex items-center justify-between text-xs font-mono-tech text-amber-400 mb-1.5">
+                    <span>📡 최고사령부 작전 지침 (TACTICAL BRIEFING)</span>
+                    <span class="text-[10px] text-emerald-400">포탄 킬캠 · 3D 폭격편대 · 야간 조명탄 탑재</span>
+                </div>
+                <p id="typewriter-text" class="text-xs sm:text-sm text-stone-200 leading-relaxed min-h-[3.6rem] font-normal"></p>
+            </div>
+
+            <!-- Operation 3-Phase Overview with Weather & Time Progression -->
+            <div class="grid grid-cols-3 gap-2 mb-5 text-center">
+                <div class="bg-stone-900/80 border border-stone-700/70 rounded-lg p-2">
+                    <div class="text-[10px] font-mono-tech text-sky-400 font-bold">PHASE 01 // 04:30</div>
+                    <div class="text-xs font-bold text-white mt-0.5">새벽 안개 전초전</div>
+                    <div class="text-[10px] text-stone-400 mt-0.5">기관총 벙커 & 대전차포</div>
+                </div>
+                <div class="bg-stone-900/80 border border-stone-700/70 rounded-lg p-2">
+                    <div class="text-[10px] font-mono-tech text-amber-400 font-bold">PHASE 02 // 13:20</div>
+                    <div class="text-xs font-bold text-white mt-0.5">포연의 기갑 결전</div>
+                    <div class="text-[10px] text-stone-400 mt-0.5">궤도파손 · 엔진화재 · 유폭</div>
+                </div>
+                <div class="bg-stone-900/80 border border-stone-700/70 rounded-lg p-2">
+                    <div class="text-[10px] font-mono-tech text-red-400 font-bold">PHASE 03 // 21:45</div>
+                    <div class="text-xs font-bold text-white mt-0.5">야간 조명탄 요새전</div>
+                    <div class="text-[10px] text-stone-400 mt-0.5">조명탄 투하 & 사령부 함락</div>
+                </div>
+            </div>
+
+            <div class="text-xs font-mono-tech text-amber-300 mb-2 text-center tracking-wider">▼ 지휘할 기갑 사단을 선택하여 작전을 개시하십시오 ▼</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <!-- Soviet Union Card -->
+                <button onclick="startGame('SOVIET')" class="group text-left bg-gradient-to-br from-red-950/70 to-stone-900 hover:from-red-900/80 border-2 border-red-600/60 hover:border-amber-400 rounded-xl p-4 transition-all active:scale-98 shadow-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-lg sm:text-xl font-black text-white flex items-center gap-2">
+                            <span class="inline-flex items-center justify-center w-7 h-7 rounded bg-red-700 text-amber-300 text-sm">★</span>
+                            소련 붉은 군대
+                        </span>
+                        <span class="text-[10px] font-mono-tech px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40">제5근위전차군</span>
+                    </div>
+                    <p class="text-xs text-stone-300 mb-3">압도적인 포병 화력과 경사장갑 기동전. IL-2 슈투르모빅 공격기 편대와 카튜샤 다연장 로켓으로 적 진영을 초토화합니다.</p>
+                    <div class="text-[11px] font-mono-tech text-amber-300 space-y-0.5 border-t border-red-800/50 pt-2">
+                        <div>• 경화기: 맥심 수랭식 기관총 & PPSh-41</div>
+                        <div>• 주력/중전차: T-34-85 & KV-2 (152mm 킬캠)</div>
+                        <div>• 항공/포병: IL-2 슈투르모빅 3기 편대 & 카튜샤</div>
+                    </div>
+                </button>
+
+                <!-- German Wehrmacht Card -->
+                <button onclick="startGame('GERMAN')" class="group text-left bg-gradient-to-br from-stone-800/90 to-stone-950 hover:from-stone-700/80 border-2 border-stone-500/60 hover:border-amber-400 rounded-xl p-4 transition-all active:scale-98 shadow-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-lg sm:text-xl font-black text-white flex items-center gap-2">
+                            <span class="inline-flex items-center justify-center w-7 h-7 rounded bg-stone-700 text-white text-sm">✠</span>
+                            독일 국방군
+                        </span>
+                        <span class="text-[10px] font-mono-tech px-2 py-0.5 rounded bg-stone-500/20 text-stone-300 border border-stone-400/40">제2SS기갑군단</span>
+                    </div>
+                    <p class="text-xs text-stone-300 mb-3">초장거리 정밀 관통력과 중장갑 전술. MG42의 살인적인 연사력과 티거 I 88mm, Ju-87 슈투카 급강하 폭격 편대를 운용합니다.</p>
+                    <div class="text-[11px] font-mono-tech text-amber-300 space-y-0.5 border-t border-stone-700 pt-2">
+                        <div>• 경화기: MG42 ("히틀러의 전기톱") & MP40</div>
+                        <div>• 주력/중전차: 4호 전차 H형 & 티거 I (88mm 킬캠)</div>
+                        <div>• 항공/포병: Ju-87 슈투카 급강하 폭격 편대</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- END GAME RESULT MODAL -->
+    <div id="result-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+        <div class="tactical-panel rounded-2xl max-w-md w-full p-6 border-2 border-amber-500 text-center shadow-2xl">
+            <div id="result-badge" class="inline-block px-3 py-1 rounded-full text-xs font-mono-tech font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 mb-2">
+                OPERATION COMPLETE
+            </div>
+            <h2 id="result-title" class="text-3xl font-military text-white mb-2">VICTORY!</h2>
+            <p id="result-subtitle" class="text-xs sm:text-sm text-stone-300 mb-5">적의 최후 사령부 요새가 완전히 함락되었습니다!</p>
+
+            <!-- Battle Statistics Table -->
+            <div class="bg-black/60 rounded-xl p-4 border border-stone-700 text-left space-y-2.5 mb-6 font-mono-tech text-xs sm:text-sm">
+                <div class="flex justify-between border-b border-stone-800 pb-1.5">
+                    <span class="text-stone-400">작전 소요 시간:</span>
+                    <span id="stat-time" class="text-white font-bold">01:45</span>
+                </div>
+                <div class="flex justify-between border-b border-stone-800 pb-1.5">
+                    <span class="text-stone-400">격파한 적 기갑/진지:</span>
+                    <span id="stat-kills" class="text-amber-400 font-bold">18기 격파</span>
+                </div>
+                <div class="flex justify-between border-b border-stone-800 pb-1.5">
+                    <span class="text-stone-400">발사한 총 화력(포탄/탄환):</span>
+                    <span id="stat-shots" class="text-stone-200 font-bold">420발</span>
+                </div>
+                <div class="flex justify-between border-b border-stone-800 pb-1.5">
+                    <span class="text-stone-400">아군 방어선 잔여 내구도:</span>
+                    <span id="stat-hp" class="text-emerald-400 font-bold">78%</span>
+                </div>
+                <div class="flex justify-between pt-1">
+                    <span class="text-stone-400">전술 사령관 훈장 등급:</span>
+                    <span id="stat-rank" class="text-amber-300 font-black text-base">★ S-RANK (강철의 원수)</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="restartSameFaction()" class="py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-sm tracking-wide transition active:scale-95">
+                    🔄 재출격하기
+                </button>
+                <button onclick="returnToFactionSelect()" class="py-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold text-sm border border-stone-600 transition active:scale-95">
+                    🚩 진영 변경
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ============================================================================
+         * 1. PROCEDURAL SOUND ENGINE (Web Audio API - No External Assets Required)
+         * ============================================================================
+         */
+        class SoundEffectsEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.noiseBuffer = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                    // Pre-generate 2 seconds of white/pink noise for explosions and gunfire
+                    const bufferSize = this.ctx.sampleRate * 2.0;
+                    this.noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                    const output = this.noiseBuffer.getChannelData(0);
+                    let b0 = 0, b1 = 0, b2 = 0;
+                    for (let i = 0; i < bufferSize; i++) {
+                        const white = Math.random() * 2 - 1;
+                        b0 = 0.99765 * b0 + white * 0.0990460;
+                        b1 = 0.96300 * b1 + white * 0.2965164;
+                        b2 = 0.57000 * b2 + white * 1.0526913;
+                        output[i] = (b0 + b1 + b2 + white * 0.1848) * 0.22;
+                    }
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playMachineGun(isMG42 = false) {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+
+                // Crisp noise burst
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = this.noiseBuffer;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(isMG42 ? 1350 : 950, now);
+                filter.Q.setValueAtTime(1.8, now);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.28, now);
+                gain.gain.exponentialRampToValueAtTime(0.005, now + 0.065);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+                noise.stop(now + 0.07);
+
+                // Punchy low thump
+                const osc = this.ctx.createOscillator();
+                const oscGain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(isMG42 ? 190 : 140, now);
+                osc.frequency.exponentialRampToValueAtTime(45, now + 0.05);
+                oscGain.gain.setValueAtTime(0.22, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.055);
+                osc.connect(oscGain);
+                oscGain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.06);
+            }
+
+            playCannon(caliber = 'medium') {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const isHeavy = caliber === 'heavy';
+                const duration = isHeavy ? 0.95 : 0.55;
+
+                // Sub-bass cannon punch
+                const osc = this.ctx.createOscillator();
+                const oscGain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(isHeavy ? 115 : 155, now);
+                osc.frequency.exponentialRampToValueAtTime(22, now + duration);
+                oscGain.gain.setValueAtTime(isHeavy ? 0.65 : 0.45, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+                osc.connect(oscGain);
+                oscGain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + duration);
+
+                // Blast wave noise
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = this.noiseBuffer;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(isHeavy ? 900 : 1200, now);
+                filter.frequency.exponentialRampToValueAtTime(120, now + duration);
+
+                const nGain = this.ctx.createGain();
+                nGain.gain.setValueAtTime(isHeavy ? 0.6 : 0.4, now);
+                nGain.gain.exponentialRampToValueAtTime(0.005, now + duration);
+
+                noise.connect(filter);
+                filter.connect(nGain);
+                nGain.connect(this.ctx.destination);
+                noise.start(now);
+                noise.stop(now + duration);
+            }
+
+            playExplosion(scale = 1.0) {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const dur = Math.min(1.8, 0.7 * scale);
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = this.noiseBuffer;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(650 * scale, now);
+                filter.frequency.exponentialRampToValueAtTime(60, now + dur);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(Math.min(0.8, 0.45 * scale), now);
+                gain.gain.exponentialRampToValueAtTime(0.005, now + dur);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+                noise.stop(now + dur);
+            }
+
+            playRicochet() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1950, now);
+                osc.frequency.exponentialRampToValueAtTime(520, now + 0.28);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.005, now + 0.28);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.29);
+            }
+
+            playRocketWhoosh(isStukaSiren = false) {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+
+                if (isStukaSiren) {
+                    // Iconic Ju-87 Stuka Jericho Siren wail
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(720, now);
+                    osc.frequency.linearRampToValueAtTime(1150, now + 0.4);
+                    osc.frequency.linearRampToValueAtTime(620, now + 1.1);
+                    gain.gain.setValueAtTime(0.14, now);
+                    gain.gain.exponentialRampToValueAtTime(0.005, now + 1.15);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 1.15);
+                } else {
+                    // Katyusha "Stalin's Organ" rocket shriek
+                    const noise = this.ctx.createBufferSource();
+                    noise.buffer = this.noiseBuffer;
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.setValueAtTime(1600, now);
+                    filter.frequency.exponentialRampToValueAtTime(750, now + 0.45);
+                    filter.Q.setValueAtTime(5.0, now);
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.45);
+                    noise.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    noise.start(now);
+                    noise.stop(now + 0.46);
+                }
+            }
+
+            playTypewriterClick() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(900 + Math.random() * 350, now);
+                gain.gain.setValueAtTime(0.04, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.018);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.02);
+            }
+
+            playRadioBeep() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1480, now);
+                gain.gain.setValueAtTime(0.06, now);
+                gain.gain.exponentialRampToValueAtTime(0.002, now + 0.07);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.075);
+            }
+        }
+
+        const sfx = new SoundEffectsEngine();
+
+        const STORY_CHAPTERS = [
+            {
+                tag: 'CHAPTER I // 1943년 7월 4일 밤, 쿠르스크 돌출부',
+                title: '폭풍 전야: 강철의 바다',
+                coord: '51°02′N 36°43′E // KURSK SALIENT',
+                body: '1943년 여름, 스탈린그라드의 패배 이후 독일 국방군은 동부전선의 주도권을 되찾기 위해 인류 전쟁사상 최대의 기갑 공세 작전명 "치타델(성채)"을 발동한다. 폭풍이 몰아치는 밤, 양측 합계 6,000여 대의 전차와 200만 명의 병력이 좁은 평원에 집결했다.',
+                camPos: { x: -16, y: 8, z: 22 },
+                camLook: { x: 0, y: 1.5, z: -15 }
+            },
+            {
+                tag: 'CHAPTER II // 1943년 7월 5일 04:30, 대회전의 서막',
+                title: '대지를 찢는 만(萬) 문의 포성',
+                coord: 'SECTOR NORTH & SOUTH // ARTILLERY BARRAGE',
+                body: '새벽을 가르는 카튜샤 다연장 로켓의 섬광과 슈투카 급강하 폭격기의 사이렌 소리가 대지를 뒤흔들었다. 독일 제2SS기갑군단의 선봉 티거(Tiger I) 중전차와 4호 전차들이 지뢰밭과 대전차 방어선을 뚫고 진격을 개시했다.',
+                camPos: { x: 14, y: 6, z: 16 },
+                camLook: { x: -4, y: 2, z: -20 }
+            },
+            {
+                tag: 'CHAPTER III // 프로호로프카 들판의 정면충돌',
+                title: '강철과 화염의 백병전',
+                coord: 'PROKHOROVKA FIELD // TANK CLASH',
+                body: '소련 제5근위전차군의 T-34-85 부대와 KV-2 중전차가 검은 매연을 뿜으며 정면으로 맞받아쳤다. 88mm 철갑탄과 152mm 대구경 포탄이 교차하며 전차의 포탑들이 하늘로 치솟았고, 하늘은 타오르는 강철의 연기로 뒤덮였다.',
+                camPos: { x: 0, y: 18, z: 28 },
+                camLook: { x: 0, y: 0, z: -24 }
+            },
+            {
+                tag: 'CHAPTER IV // 최고사령부 긴급 명령 하달',
+                title: '사령관이여, 전선을 지휘하라!',
+                coord: 'SUPREME COMMAND // DIRECTIVE #07',
+                body: '이제 전장의 운명은 사령관 당신의 손끝에 달렸다. 중기관총 소사, 주력전차 일제사격, 대구경 중포, 그리고 다연장 로켓 화력지원을 직접 통제하고 5가지 전술 카메라 시점을 넘나들며 적의 3단계 방어선과 최종 사령부 요새를 함락하라!',
+                camPos: { x: -6, y: 25, z: 32 },
+                camLook: { x: 0, y: 0, z: -18 }
+            }
+        ];
+
+        const CAMERA_MODES = [
+            { id: 0, name: '전술사령부 (TAC-HQ)', fov: 48 },
+            { id: 1, name: '전차장 해치 (CMDR)', fov: 52 },
+            { id: 2, name: '포수 조준경 (GUNNER)', fov: 26 },
+            { id: 3, name: '항공 정찰 (RECON)', fov: 55 },
+            { id: 4, name: '측면 시네마틱 (FLANK)', fov: 46 }
+        ];
+
+        const FACTIONS = {
+            SOVIET: {
+                id: 'SOVIET',
+                name: '소련 붉은 군대',
+                badge: '★',
+                badgeBg: 'bg-red-800',
+                primaryColor: 0x4d5d3b,
+                secondaryColor: 0x364229,
+                enemyFaction: 'GERMAN',
+                weapons: [
+                    {
+                        name: 'Maxim & PPSh-41',
+                        sub: '7.62mm 고속 소사',
+                        cooldown: 0.08,
+                        damage: 16,
+                        penetration: 18,
+                        splash: 1.5,
+                        hint: '참호·보병·경장갑 제압용 지속 연사'
+                    },
+                    {
+                        name: 'T-34-85 일제포격',
+                        sub: '85mm 철갑탄 2문 제사',
+                        cooldown: 2.3,
+                        damage: 195,
+                        penetration: 135,
+                        splash: 4.5,
+                        hint: '주력 기갑 표적 직사 타격 · 궤도 파손 유발'
+                    },
+                    {
+                        name: 'KV-2 152mm 곡사포',
+                        sub: '대구경 콘크리트 파괴탄',
+                        cooldown: 4.8,
+                        damage: 540,
+                        penetration: 999,
+                        splash: 9.5,
+                        hint: '포탄 추적 킬캠 작동 · 중장갑 절대관통 및 유폭'
+                    },
+                    {
+                        name: 'IL-2 편대 & 카튜샤',
+                        sub: '공격기 급강하 + 16연발 로켓',
+                        cooldown: 13.5,
+                        damage: 180,
+                        penetration: 240,
+                        splash: 9.0,
+                        hint: '3D IL-2 슈투르모빅 편대 폭격 및 카튜샤 융단포격'
+                    }
+                ]
+            },
+            GERMAN: {
+                id: 'GERMAN',
+                name: '독일 국방군',
+                badge: '✠',
+                badgeBg: 'bg-stone-700',
+                primaryColor: 0x5c6266,
+                secondaryColor: 0x43484b,
+                enemyFaction: 'SOVIET',
+                weapons: [
+                    {
+                        name: 'MG42 중기관총',
+                        sub: '1,200RPM 히틀러의 전기톱',
+                        cooldown: 0.065,
+                        damage: 14,
+                        penetration: 20,
+                        splash: 1.5,
+                        hint: '초고속 예광탄 탄막으로 경장갑 제압'
+                    },
+                    {
+                        name: '4호 전차 H형 포격',
+                        sub: '75mm KwK 40 장포신 2문',
+                        cooldown: 2.2,
+                        damage: 205,
+                        penetration: 145,
+                        splash: 4.2,
+                        hint: '정밀 고속 철갑탄 2문 사격 · 궤도 파손 유발'
+                    },
+                    {
+                        name: '티거 I 88mm 중포',
+                        sub: '88mm KwK 36 초장거리 관통',
+                        cooldown: 4.5,
+                        damage: 560,
+                        penetration: 999,
+                        splash: 8.8,
+                        hint: '포탄 추적 킬캠 작동 · 모든 중전차 정면 관통'
+                    },
+                    {
+                        name: 'Ju-87 슈투카 & 로켓',
+                        sub: '역갈매기 급강하 폭격 편대',
+                        cooldown: 13.5,
+                        damage: 185,
+                        penetration: 250,
+                        splash: 9.2,
+                        hint: '예리코의 나팔 사이렌과 3D 슈투카 편대 급강하 폭격'
+                    }
+                ]
+            }
+        };
+
+        /**
+         * ============================================================================
+         * 3. GLOBAL GAME STATE & THREE.JS SCENE SETUP
+         * ============================================================================
+         */
+        let scene, camera, renderer, clock;
+        let ambientLight, dirLight, horizonLight;
+        let groundMesh, reticleGroup, reticleRing, reticleOuter;
+        let raycaster = new THREE.Raycaster();
+        let pointerNDC = new THREE.Vector2(0, 0);
+        let currentAimPoint = new THREE.Vector3(0, 0, -25);
+
+        const gameState = {
+            running: false,
+            inPrologue: true,
+            storyIndex: 0,
+            storyAmbientTimer: 0,
+            faction: FACTIONS.SOVIET,
+            phase: 1,
+            phaseTransitioning: false,
+            stageZOffset: 0,
+            cameraMode: 0,
+            cameraZoomed: false,
+            autoKillCam: true,       // A-2: Toggleable Automatic Shell Kill-Cam
+            activeKillCamShell: null, // Reference to tracked shell
+            killCamHoldTimer: 0,     // Post-impact dramatic hold
+            killCamImpactPos: null,
+            cameraShake: 0,
+            timeElapsed: 0,
+            alliedHP: 1000,
+            alliedMaxHP: 1000,
+            smokeActiveTimer: 0,
+            repairCooldown: 0,
+            smokeCooldown: 0,
+            flareTimer: 0,           // A-3: Periodic night parachute flare timer
+            selectedWeapon: 0,
+            isPointerDown: false,
+            mgHeat: 0,
+            mgOverheated: false,
+            weaponCooldowns: [0, 0, 0, 0],
+            stats: {
+                kills: 0,
+                shots: 0
+            },
+            phaseTotalEnemies: 6
+        };
+
+        // Entity Collections
+        let alliedUnits = [];
+        let enemyUnits = [];
+        let projectiles = [];
+        let airSquadrons = [];       // A-1: 3D Ju-87 Stuka / IL-2 Sturmovik planes
+        let parachuteFlares = [];    // A-3: 3D Parachute Illumination Flares with PointLights
+        let dynamicLights = [];      // A-3: Transient Muzzle & Explosion PointLights
+        let flyingTurrets = [];
+        let particles = [];
+        let shockwaves = [];
+        let sceneryProps = [];
+
+        function initThreeScene() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1b1917);
+            scene.fog = new THREE.FogExp2(0x1f1c18, 0.0085);
+
+            camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.5, 280);
+            camera.position.set(0, 32, 34);
+            camera.lookAt(0, 0, -18);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Atmospheric Lighting (stored globally for A-3 Phase Weather transitions)
+            ambientLight = new THREE.AmbientLight(0xffedd5, 0.55);
+            scene.add(ambientLight);
+
+            dirLight = new THREE.DirectionalLight(0xffdca8, 1.25);
+            dirLight.position.set(35, 65, 30);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 10;
+            dirLight.shadow.camera.far = 190;
+            const d = 65;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            horizonLight = new THREE.DirectionalLight(0xea580c, 0.45);
+            horizonLight.position.set(-30, 15, -90);
+            scene.add(horizonLight);
+
+            createBattlefieldEnvironment();
+            createTacticalReticle();
+            setupInputListeners();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function createBattlefieldEnvironment() {
+            // Large scorched earth ground plane covering all 3 phases (Z from +60 to -260)
+            const groundGeo = new THREE.PlaneGeometry(180, 360, 48, 96);
+            groundGeo.rotateX(-Math.PI / 2);
+
+            // Subtle procedural height variations on vertices
+            const posAttr = groundGeo.attributes.position;
+            for (let i = 0; i < posAttr.count; i++) {
+                const vx = posAttr.getX(i);
+                const vz = posAttr.getZ(i);
+                // Keep central combat lane relatively flat, raise flanks slightly
+                const edgeFactor = Math.max(0, (Math.abs(vx) - 22) * 0.08);
+                const noise = (Math.sin(vx * 0.25) * Math.cos(vz * 0.25)) * 0.35;
+                posAttr.setY(i, noise + edgeFactor);
+            }
+            groundGeo.computeVertexNormals();
+
+            const groundMat = new THREE.MeshStandardMaterial({
+                color: 0x3b332b,
+                roughness: 0.94,
+                metalness: 0.05
+            });
+            groundMesh = new THREE.Mesh(groundGeo, groundMat);
+            groundMesh.receiveShadow = true;
+            scene.add(groundMesh);
+
+            // Generate craters, trenches, dragon's teeth, and burnt trees along the 3-phase corridor
+            const craterMat = new THREE.MeshStandardMaterial({ color: 0x231e19, roughness: 0.98 });
+            const concreteMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.85 });
+            const woodMat = new THREE.MeshStandardMaterial({ color: 0x27201c, roughness: 0.9 });
+
+            for (let z = 15; z > -220; z -= 11) {
+                // Bomb Craters
+                for (let c = 0; c < 2; c++) {
+                    const cx = (Math.random() - 0.5) * 65;
+                    const cz = z + (Math.random() - 0.5) * 8;
+                    const r = 1.6 + Math.random() * 2.2;
+                    const crater = new THREE.Mesh(new THREE.RingGeometry(0.2, r, 16), craterMat);
+                    crater.rotation.x = -Math.PI / 2;
+                    crater.position.set(cx, 0.08, cz);
+                    scene.add(crater);
+                    sceneryProps.push(crater);
+                }
+
+                // Dragon's Teeth (Anti-tank concrete pyramids) & Destroyed Trees on flanks
+                [-1, 1].forEach(side => {
+                    const tx = side * (24 + Math.random() * 18);
+                    const tz = z + (Math.random() - 0.5) * 6;
+                    // Burnt tree trunk
+                    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.35, 4.5, 6), woodMat);
+                    trunk.position.set(tx, 2.2, tz);
+                    trunk.rotation.z = (Math.random() - 0.5) * 0.25;
+                    trunk.castShadow = true;
+                    scene.add(trunk);
+                    sceneryProps.push(trunk);
+
+                    // Concrete Dragon's tooth
+                    if (Math.random() > 0.4) {
+                        const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.4, 4), concreteMat);
+                        tooth.position.set(side * (16 + Math.random() * 8), 0.7, tz + 2);
+                        tooth.castShadow = true;
+                        scene.add(tooth);
+                        sceneryProps.push(tooth);
+                    }
+                });
+            }
+        }
+
+        function createTacticalReticle() {
+            reticleGroup = new THREE.Group();
+
+            const innerGeo = new THREE.RingGeometry(0.8, 1.15, 24);
+            innerGeo.rotateX(-Math.PI / 2);
+            const innerMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+            reticleRing = new THREE.Mesh(innerGeo, innerMat);
+            reticleGroup.add(reticleRing);
+
+            const outerGeo = new THREE.RingGeometry(3.8, 4.1, 32);
+            outerGeo.rotateX(-Math.PI / 2);
+            const outerMat = new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide, transparent: true, opacity: 0.55 });
+            reticleOuter = new THREE.Mesh(outerGeo, outerMat);
+            reticleGroup.add(reticleOuter);
+
+            reticleGroup.position.set(0, 0.25, -20);
+            scene.add(reticleGroup);
+        }
+
+        /**
+         * ============================================================================
+         * 4. PROCEDURAL 3D MILITARY VEHICLE & BUNKER FACTORY
+         * ============================================================================
+         */
+        function buildTankMesh(type, factionId) {
+            const group = new THREE.Group();
+            const isSoviet = factionId === 'SOVIET';
+            const isHeavy = type === 'HEAVY';
+
+            const baseColor = isSoviet ? (isHeavy ? 0x3f4f30 : 0x4d5d3b) : (isHeavy ? 0x6e6a59 : 0x555b60);
+            const darkMetal = new THREE.MeshStandardMaterial({ color: 0x1e2022, roughness: 0.8, metalness: 0.4 });
+            const armorMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.65, metalness: 0.25 });
+            const accentMat = new THREE.MeshStandardMaterial({ color: isSoviet ? 0x991b1b : 0x27272a, roughness: 0.6 });
+
+            const scale = isHeavy ? 1.32 : 1.0;
+
+            // Left & Right Caterpillar Tracks
+            const trackGeo = new THREE.BoxGeometry(0.75 * scale, 0.95 * scale, 4.4 * scale);
+            const leftTrack = new THREE.Mesh(trackGeo, darkMetal);
+            leftTrack.position.set(-1.35 * scale, 0.48 * scale, 0);
+            leftTrack.castShadow = true;
+            group.add(leftTrack);
+
+            const rightTrack = new THREE.Mesh(trackGeo, darkMetal);
+            rightTrack.position.set(1.35 * scale, 0.48 * scale, 0);
+            rightTrack.castShadow = true;
+            group.add(rightTrack);
+
+            // Road Wheels detail
+            const wheelGeo = new THREE.CylinderGeometry(0.36 * scale, 0.36 * scale, 0.82 * scale, 10);
+            wheelGeo.rotateZ(Math.PI / 2);
+            for (let w = -1.5; w <= 1.5; w += 0.75) {
+                const lw = new THREE.Mesh(wheelGeo, darkMetal);
+                lw.position.set(-1.35 * scale, 0.38 * scale, w * scale);
+                group.add(lw);
+                const rw = new THREE.Mesh(wheelGeo, darkMetal);
+                rw.position.set(1.35 * scale, 0.38 * scale, w * scale);
+                group.add(rw);
+            }
+
+            // Main Armored Hull
+            const hullGeo = new THREE.BoxGeometry(2.3 * scale, 0.95 * scale, 4.1 * scale);
+            const hull = new THREE.Mesh(hullGeo, armorMat);
+            hull.position.set(0, 0.85 * scale, 0);
+            hull.castShadow = true;
+            hull.receiveShadow = true;
+            group.add(hull);
+
+            // Side Skirts / Fuel Drums
+            const skirtGeo = new THREE.BoxGeometry(2.85 * scale, 0.4 * scale, 3.8 * scale);
+            const skirt = new THREE.Mesh(skirtGeo, accentMat);
+            skirt.position.set(0, 1.05 * scale, 0);
+            group.add(skirt);
+
+            // Articulated Turret Group (Detaches on Ammo Rack Explosion!)
+            const turretPivot = new THREE.Group();
+            turretPivot.position.set(0, 1.35 * scale, 0.1 * scale);
+
+            // KV-2 has a tall boxy turret; Tiger I has a wide cylindrical/boxy turret; T-34 has a sloped hex turret
+            let turretMesh;
+            if (isHeavy && isSoviet) {
+                // Iconic KV-2 "Dreadnought" high turret
+                turretMesh = new THREE.Mesh(new THREE.BoxGeometry(1.85 * scale, 1.35 * scale, 2.2 * scale), armorMat);
+                turretMesh.position.y = 0.65 * scale;
+            } else if (isHeavy && !isSoviet) {
+                // Iconic Tiger I horseshoe turret
+                turretMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.15 * scale, 1.2 * scale, 0.95 * scale, 12), armorMat);
+                turretMesh.position.y = 0.48 * scale;
+            } else {
+                turretMesh = new THREE.Mesh(new THREE.BoxGeometry(1.65 * scale, 0.82 * scale, 2.05 * scale), armorMat);
+                turretMesh.position.y = 0.41 * scale;
+            }
+            turretMesh.castShadow = true;
+            turretPivot.add(turretMesh);
+
+            // Commander Cupola
+            const cupola = new THREE.Mesh(new THREE.CylinderGeometry(0.32 * scale, 0.35 * scale, 0.35 * scale, 10), darkMetal);
+            cupola.position.set(0.35 * scale, turretMesh.position.y + 0.5 * scale, 0.3 * scale);
+            turretPivot.add(cupola);
+
+            // Recoiling Cannon Barrel Group
+            const gunPivot = new THREE.Group();
+            gunPivot.position.set(0, turretMesh.position.y, -0.9 * scale);
+
+            const mantlet = new THREE.Mesh(new THREE.BoxGeometry(0.95 * scale, 0.55 * scale, 0.6 * scale), darkMetal);
+            gunPivot.add(mantlet);
+
+            const barrelLen = (isHeavy && isSoviet) ? 2.4 * scale : (isHeavy ? 3.6 * scale : 2.9 * scale);
+            const barrelRadius = (isHeavy && isSoviet) ? 0.24 * scale : (isHeavy ? 0.17 * scale : 0.13 * scale);
+            const barrelGeo = new THREE.CylinderGeometry(barrelRadius, barrelRadius * 1.15, barrelLen, 10);
+            barrelGeo.rotateX(Math.PI / 2);
+            const barrel = new THREE.Mesh(barrelGeo, darkMetal);
+            barrel.position.set(0, 0, -barrelLen / 2 - 0.2);
+            barrel.castShadow = true;
+            gunPivot.add(barrel);
+
+            // Muzzle Brake
+            const brakeGeo = new THREE.CylinderGeometry(barrelRadius * 1.55, barrelRadius * 1.55, 0.42 * scale, 10);
+            brakeGeo.rotateX(Math.PI / 2);
+            const brake = new THREE.Mesh(brakeGeo, darkMetal);
+            brake.position.set(0, 0, -barrelLen - 0.25);
+            gunPivot.add(brake);
+
+            turretPivot.add(gunPivot);
+            group.add(turretPivot);
+
+            return {
+                root: group,
+                turret: turretPivot,
+                gun: gunPivot,
+                armorMat: armorMat,
+                turretMesh: turretMesh
+            };
+        }
+
+        function buildBunkerOrATGunMesh(type, factionId) {
+            const group = new THREE.Group();
+            const sandbagMat = new THREE.MeshStandardMaterial({ color: 0x857558, roughness: 0.95 });
+            const concreteMat = new THREE.MeshStandardMaterial({ color: 0x64686b, roughness: 0.85 });
+            const darkMetal = new THREE.MeshStandardMaterial({ color: 0x22252a, roughness: 0.7, metalness: 0.5 });
+
+            const turretPivot = new THREE.Group();
+            const gunPivot = new THREE.Group();
+
+            if (type === 'BUNKER') {
+                // Reinforced Sandbag & Concrete Pillbox
+                const base = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.6, 1.6, 8), concreteMat);
+                base.position.y = 0.8;
+                base.castShadow = true;
+                group.add(base);
+
+                const roof = new THREE.Mesh(new THREE.ConeGeometry(2.5, 0.8, 8), sandbagMat);
+                roof.position.y = 1.9;
+                group.add(roof);
+
+                turretPivot.position.set(0, 1.1, 0);
+                const mgBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 2.2, 8), darkMetal);
+                mgBarrel.rotation.x = Math.PI / 2;
+                mgBarrel.position.z = -1.2;
+                gunPivot.add(mgBarrel);
+                turretPivot.add(gunPivot);
+                group.add(turretPivot);
+            } else if (type === 'ATGUN') {
+                // 88mm Flak / Pak 40 / ZiS-3 Anti-Tank Gun with Shield
+                const sandbagRing = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.45, 8, 16, Math.PI), sandbagMat);
+                sandbagRing.rotation.x = Math.PI / 2;
+                sandbagRing.position.y = 0.35;
+                group.add(sandbagRing);
+
+                turretPivot.position.set(0, 0.85, 0);
+                const shield = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.3, 0.2), concreteMat);
+                shield.rotation.x = -0.22;
+                turretPivot.add(shield);
+
+                const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 3.4, 10), darkMetal);
+                barrel.rotation.x = Math.PI / 2;
+                barrel.position.set(0, 0.2, -1.6);
+                gunPivot.add(barrel);
+                turretPivot.add(gunPivot);
+                group.add(turretPivot);
+            } else if (type === 'CITADEL') {
+                // Phase 3 Boss: Massive Reinforced Concrete Fortress with Dual Heavy Turrets
+                const mainBlock = new THREE.Mesh(new THREE.BoxGeometry(14, 5.2, 7.5), concreteMat);
+                mainBlock.position.y = 2.6;
+                mainBlock.castShadow = true;
+                mainBlock.receiveShadow = true;
+                group.add(mainBlock);
+
+                // Upper Command Observation Deck
+                const upperDeck = new THREE.Mesh(new THREE.BoxGeometry(8.5, 2.6, 4.8), darkMetal);
+                upperDeck.position.set(0, 6.2, 0.5);
+                upperDeck.castShadow = true;
+                group.add(upperDeck);
+
+                // Central Heavy Fortress Turret
+                turretPivot.position.set(0, 7.6, 0.5);
+                const dome = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.8, 1.6, 12), concreteMat);
+                turretPivot.add(dome);
+
+                // Twin 128mm / 152mm Fortress Barrels
+                [-0.65, 0.65].forEach(bx => {
+                    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 5.2, 10), darkMetal);
+                    b.rotation.x = Math.PI / 2;
+                    b.position.set(bx, 0.2, -2.8);
+                    gunPivot.add(b);
+                });
+                turretPivot.add(gunPivot);
+                group.add(turretPivot);
+            }
+
+            return {
+                root: group,
+                turret: turretPivot,
+                gun: gunPivot,
+                armorMat: concreteMat,
+                turretMesh: turretPivot
+            };
+        }
+
+        function buildWarplaneMesh(factionId) {
+            const group = new THREE.Group();
+            const isGerman = factionId === 'GERMAN';
+
+            const bodyMat = new THREE.MeshStandardMaterial({
+                color: isGerman ? 0x3f464d : 0x3b5230,
+                roughness: 0.55,
+                metalness: 0.35
+            });
+            const underMat = new THREE.MeshStandardMaterial({
+                color: isGerman ? 0x7dd3fc : 0x60a5fa,
+                roughness: 0.7
+            });
+            const darkMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.4, metalness: 0.6 });
+            const glassMat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.65, roughness: 0.2 });
+            const markingMat = new THREE.MeshBasicMaterial({ color: isGerman ? 0xfef08a : 0xef4444 });
+
+            // Fuselage
+            const fuselage = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.05, 6.2), bodyMat);
+            fuselage.castShadow = true;
+            group.add(fuselage);
+
+            // Engine Nose Cowling
+            const nose = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.8, 8), darkMat);
+            nose.rotation.x = -Math.PI / 2;
+            nose.position.set(0, 0, -3.8);
+            group.add(nose);
+
+            // Cockpit Canopy
+            const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.65, 2.3), glassMat);
+            canopy.position.set(0, 0.7, -0.4);
+            group.add(canopy);
+
+            // Wings (Ju-87 Stuka has iconic inverted gull wings; IL-2 has broad swept armored wings)
+            if (isGerman) {
+                [-1, 1].forEach(side => {
+                    const innerWing = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.16, 1.7), bodyMat);
+                    innerWing.position.set(side * 1.6, -0.25, -0.8);
+                    innerWing.rotation.z = side * -0.22;
+                    group.add(innerWing);
+
+                    const outerWing = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.14, 1.5), bodyMat);
+                    outerWing.position.set(side * 4.4, -0.1, -0.7);
+                    outerWing.rotation.z = side * 0.18;
+                    outerWing.castShadow = true;
+                    group.add(outerWing);
+
+                    // Iconic Stuka fixed landing gear spats ("Sirens of Jericho")
+                    const gear = new THREE.Mesh(new THREE.BoxGeometry(0.32, 1.1, 0.9), darkMat);
+                    gear.position.set(side * 1.9, -0.95, -1.0);
+                    group.add(gear);
+
+                    // Wing Tip Balkenkreuz / Yellow Stuka Wing Tips
+                    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 1.3), markingMat);
+                    tip.position.set(side * 6.0, 0.15, -0.7);
+                    group.add(tip);
+                });
+            } else {
+                const mainWing = new THREE.Mesh(new THREE.BoxGeometry(11.6, 0.18, 1.85), bodyMat);
+                mainWing.position.set(0, -0.15, -0.7);
+                mainWing.castShadow = true;
+                group.add(mainWing);
+
+                [-4.5, 4.5].forEach(wx => {
+                    const star = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.22, 5), markingMat);
+                    star.position.set(wx, -0.12, -0.7);
+                    group.add(star);
+                });
+            }
+
+            // Tail Fin & Horizontal Stabilizer
+            const tailH = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.14, 1.0), bodyMat);
+            tailH.position.set(0, 0.2, 2.7);
+            group.add(tailH);
+
+            const tailV = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.5, 1.2), bodyMat);
+            tailV.position.set(0, 0.9, 2.65);
+            group.add(tailV);
+
+            // Under-fuselage 500kg Bomb (detaches during dive!)
+            const bomb = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.5, 8), darkMat);
+            bomb.rotation.x = Math.PI / 2;
+            bomb.position.set(0, -0.78, -0.8);
+            group.add(bomb);
+
+            // Spinning Propeller Group
+            const propGroup = new THREE.Group();
+            propGroup.position.set(0, 0, -4.75);
+            const blade1 = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.06), darkMat);
+            const blade2 = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.4, 0.06), darkMat);
+            propGroup.add(blade1, blade2);
+            group.add(propGroup);
+
+            return { root: group, prop: propGroup, bomb: bomb };
+        }
+
+        function applyPhaseAtmosphere(phaseNum) {
+            const weatherBadge = document.getElementById('hud-weather-badge');
+
+            if (phaseNum === 1) {
+                // Phase 1: 04:30 Dawn Mist
+                scene.background = new THREE.Color(0x1f242d);
+                scene.fog = new THREE.FogExp2(0x232933, 0.0085);
+                ambientLight.color.setHex(0xcbd5e1);
+                ambientLight.intensity = 0.58;
+                dirLight.color.setHex(0xfde68a);
+                dirLight.intensity = 1.15;
+                horizonLight.color.setHex(0x38bdf8);
+                horizonLight.intensity = 0.4;
+                if (weatherBadge) {
+                    weatherBadge.textContent = '🌅 04:30 새벽안개';
+                    weatherBadge.className = 'text-[10px] font-mono-tech px-1.5 py-0.5 rounded bg-sky-950/90 text-sky-300 border border-sky-500/40';
+                }
+            } else if (phaseNum === 2) {
+                // Phase 2: 13:20 Smoke & Ash Overcast
+                scene.background = new THREE.Color(0x261c14);
+                scene.fog = new THREE.FogExp2(0x2b1f16, 0.009);
+                ambientLight.color.setHex(0xfed7aa);
+                ambientLight.intensity = 0.5;
+                dirLight.color.setHex(0xfb923c);
+                dirLight.intensity = 1.3;
+                horizonLight.color.setHex(0xef4444);
+                horizonLight.intensity = 0.55;
+                if (weatherBadge) {
+                    weatherBadge.textContent = '🌋 13:20 포연폭풍';
+                    weatherBadge.className = 'text-[10px] font-mono-tech px-1.5 py-0.5 rounded bg-amber-950/90 text-amber-300 border border-amber-500/40';
+                }
+            } else if (phaseNum === 3) {
+                // Phase 3: 21:45 Burning Night & Parachute Flares
+                scene.background = new THREE.Color(0x090b10);
+                scene.fog = new THREE.FogExp2(0x0b0d13, 0.0095);
+                ambientLight.color.setHex(0x64748b);
+                ambientLight.intensity = 0.26;
+                dirLight.color.setHex(0x94a3b8);
+                dirLight.intensity = 0.42;
+                horizonLight.color.setHex(0xdc2626);
+                horizonLight.intensity = 0.75;
+                if (weatherBadge) {
+                    weatherBadge.textContent = '🌙 21:45 야간조명탄';
+                    weatherBadge.className = 'text-[10px] font-mono-tech px-1.5 py-0.5 rounded bg-red-950/90 text-red-300 border border-red-500/40';
+                }
+                // Immediately deploy two parachute illumination flares over the night fortress!
+                spawnParachuteFlare(new THREE.Vector3(-10, 26, gameState.stageZOffset - 22), 0xfef08a);
+                spawnParachuteFlare(new THREE.Vector3(10, 28, gameState.stageZOffset - 30), 0xfca5a5);
+            }
+        }
+
+        function spawnParachuteFlare(pos, colorHex = 0xfef08a) {
+            const group = new THREE.Group();
+
+            // Glowing Flare Core
+            const core = new THREE.Mesh(
+                new THREE.SphereGeometry(0.48, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xffffff })
+            );
+            group.add(core);
+
+            // Outer Halo Sprite
+            const halo = new THREE.Mesh(
+                new THREE.SphereGeometry(1.1, 8, 8),
+                new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.45 })
+            );
+            group.add(halo);
+
+            // Mini Parachute Canopy above the flare
+            const chuteGeo = new THREE.SphereGeometry(1.4, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.55);
+            const chuteMat = new THREE.MeshBasicMaterial({ color: 0xe7e5e4, side: THREE.DoubleSide, wireframe: false });
+            const chute = new THREE.Mesh(chuteGeo, chuteMat);
+            chute.position.y = 2.4;
+            group.add(chute);
+
+            // Dynamic PointLight that illuminates tanks and ground below
+            const light = new THREE.PointLight(colorHex, 2.6, 58, 1.5);
+            group.add(light);
+
+            group.position.copy(pos);
+            scene.add(group);
+
+            parachuteFlares.push({
+                mesh: group,
+                light: light,
+                halo: halo,
+                life: 16.0,
+                maxLife: 16.0,
+                seed: Math.random() * 10
+            });
+        }
+
+        function launchManualFlare() {
+            if (!gameState.running) return;
+            const flarePos = new THREE.Vector3(
+                currentAimPoint.x + (Math.random() - 0.5) * 6,
+                26,
+                currentAimPoint.z
+            );
+            spawnParachuteFlare(flarePos, 0xfef08a);
+            sfx.playRadioBeep();
+            spawnFloatingText(currentAimPoint, '🌟 전술 조명탄 투하! (전장 시야 점등)', 'text-amber-200 font-bold text-xs');
+            postRadioLog('조명탄 점등', '지정 좌표 상공에 낙하산 조명탄이 투하되어 야간 전장을 비춥니다.');
+        }
+
+        function spawnTransientLight(pos, colorHex, intensity, distance, duration) {
+            const light = new THREE.PointLight(colorHex, intensity, distance);
+            light.position.copy(pos);
+            light.position.y += 1.2;
+            scene.add(light);
+            dynamicLights.push({
+                light,
+                elapsed: 0,
+                duration,
+                maxIntensity: intensity
+            });
+        }
+
+        /**
+         * ============================================================================
+         * 5. ALLIED & ENEMY DEPLOYMENT AND 3-PHASE PROGRESSION
+         * ============================================================================
+         */
+        function deployAlliedLine() {
+            // Clear existing allied units
+            alliedUnits.forEach(u => scene.remove(u.mesh.root));
+            alliedUnits = [];
+
+            const fId = gameState.faction.id;
+            const zBase = gameState.stageZOffset + 12;
+
+            // 1. Left & Right Medium Tanks (Slot 2)
+            [-8.5, 8.5].forEach(xPos => {
+                const model = buildTankMesh('MEDIUM', fId);
+                model.root.position.set(xPos, 0, zBase);
+                scene.add(model.root);
+                alliedUnits.push({ role: 'MEDIUM', mesh: model, recoil: 0 });
+            });
+
+            // 2. Center Heavy Tank / Heavy Siege Gun (Slot 3)
+            const heavyModel = buildTankMesh('HEAVY', fId);
+            heavyModel.root.position.set(0, 0, zBase + 1.5);
+            scene.add(heavyModel.root);
+            alliedUnits.push({ role: 'HEAVY', mesh: heavyModel, recoil: 0 });
+
+            // 3. Forward Machine Gun Trenches (Slot 1)
+            [-4.2, 4.2].forEach(xPos => {
+                const mgModel = buildBunkerOrATGunMesh('BUNKER', fId);
+                mgModel.root.scale.set(0.75, 0.75, 0.75);
+                mgModel.root.position.set(xPos, 0, zBase - 2.2);
+                scene.add(mgModel.root);
+                alliedUnits.push({ role: 'MG', mesh: mgModel, recoil: 0 });
+            });
+        }
+
+        function spawnPhaseWave(phaseNum) {
+            // Clear any old enemy UI tags
+            enemyUnits.forEach(e => {
+                if (e.uiElement) e.uiElement.remove();
+                scene.remove(e.mesh.root);
+            });
+            enemyUnits = [];
+
+            // A-3: Apply Phase Time-of-Day & Weather Lighting
+            applyPhaseAtmosphere(phaseNum);
+
+            const enemyFactionId = gameState.faction.enemyFaction;
+            const isGermanEnemy = enemyFactionId === 'GERMAN';
+            const zFront = gameState.stageZOffset;
+
+            let waveDefs = [];
+
+            if (phaseNum === 1) {
+                // Phase 1: Outpost Breakthrough (Bunkers, AT Guns, Scout Vehicles)
+                waveDefs = [
+                    { type: 'BUNKER', name: isGermanEnemy ? 'MG42 기관총 벙커' : '맥심 기관총 진지', hp: 320, armor: 10, x: -11, z: zFront - 18, speed: 0, fireInterval: 2.6, dmg: 14 },
+                    { type: 'BUNKER', name: isGermanEnemy ? 'MG42 기관총 벙커' : '맥심 기관총 진지', hp: 320, armor: 10, x: 11, z: zFront - 18, speed: 0, fireInterval: 2.8, dmg: 14 },
+                    { type: 'ATGUN', name: isGermanEnemy ? '75mm Pak 40 대전차포' : '76mm ZiS-3 사단포', hp: 420, armor: 25, x: -4.5, z: zFront - 25, speed: 0, fireInterval: 3.5, dmg: 26 },
+                    { type: 'ATGUN', name: isGermanEnemy ? '75mm Pak 40 대전차포' : '76mm ZiS-3 사단포', hp: 420, armor: 25, x: 4.5, z: zFront - 25, speed: 0, fireInterval: 3.7, dmg: 26 },
+                    { type: 'MEDIUM', name: isGermanEnemy ? 'Sd.Kfz.251 장갑차' : 'T-70 경전차', hp: 480, armor: 35, x: 0, z: zFront - 34, speed: 1.4, fireInterval: 3.2, dmg: 22 }
+                ];
+                showPhaseBanner(
+                    'OPERATION CITADEL // PHASE 1 OF 3',
+                    '작전 1단계: 무인지대 돌파',
+                    '적의 최전방 기관총 벙커와 대전차포 진지를 격파하여 아군 기갑사단의 진격로를 개척하십시오!'
+                );
+                document.getElementById('hud-phase-badge').textContent = 'PHASE 1 / 3';
+                document.getElementById('hud-phase-title').textContent = '전초선 돌파 작전';
+                document.getElementById('hud-objective-desc').textContent = '최전방 벙커와 대전차포를 사격하여 돌파구를 여십시오.';
+            } else if (phaseNum === 2) {
+                // Phase 2: Clash of Steel (Medium Tanks + Heavy Tank Ace Wave)
+                waveDefs = [
+                    { type: 'MEDIUM', name: isGermanEnemy ? '4호 전차 H형' : 'T-34-85 중형전차', hp: 620, armor: 65, x: -12, z: zFront - 38, speed: 1.35, fireInterval: 3.2, dmg: 32 },
+                    { type: 'MEDIUM', name: isGermanEnemy ? '판터 G형 중형전차' : 'T-34-85 근위전차', hp: 680, armor: 75, x: 12, z: zFront - 39, speed: 1.35, fireInterval: 3.1, dmg: 34 },
+                    { type: 'MEDIUM', name: isGermanEnemy ? '4호 전차 H형' : 'T-34-76 중형전차', hp: 600, armor: 60, x: -5, z: zFront - 32, speed: 1.2, fireInterval: 3.4, dmg: 28 },
+                    { type: 'HEAVY', name: isGermanEnemy ? '티거 I 에이스 중전차' : 'KV-2 152mm 중전차', hp: 1150, armor: 155, x: 0, z: zFront - 42, speed: 0.9, fireInterval: 3.8, dmg: 55 },
+                    { type: 'HEAVY', name: isGermanEnemy ? '티거 I 중전차' : 'IS-2 스탈린 중전차', hp: 1050, armor: 150, x: 6.5, z: zFront - 44, speed: 0.95, fireInterval: 4.0, dmg: 50 },
+                    { type: 'ATGUN', name: isGermanEnemy ? '88mm Flak 36 대공포' : '85mm 52-K 대공포', hp: 460, armor: 30, x: -8, z: zFront - 28, speed: 0, fireInterval: 3.3, dmg: 38 }
+                ];
+                showPhaseBanner(
+                    'OPERATION CITADEL // PHASE 2 OF 3',
+                    '작전 2단계: 강철의 기갑 결전',
+                    '적 주력 기갑사단과 중전차가 반격을 개시했습니다! 중전차 전면 장갑은 도탄될 수 있으니 대구경 주포와 로켓 화력을 집중하십시오!'
+                );
+                document.getElementById('hud-phase-badge').textContent = 'PHASE 2 / 3';
+                document.getElementById('hud-phase-title').textContent = '강철의 기갑 결전';
+                document.getElementById('hud-objective-desc').textContent = '밀려오는 적 주력전차와 에이스 중전차를 모두 격파하십시오!';
+                document.getElementById('step-p2').className = 'h-1.5 w-10 sm:w-14 rounded-full bg-amber-500 transition-all';
+            } else if (phaseNum === 3) {
+                // Phase 3: Fall of the Citadel (Giant Boss Fortress + Royal Guard Heavy Tanks)
+                waveDefs = [
+                    { type: 'CITADEL', name: isGermanEnemy ? '최고사령부 철십자 요새' : '붉은군대 전략사령부 요새', hp: 2800, armor: 120, x: 0, z: zFront - 36, speed: 0, fireInterval: 2.9, dmg: 65 },
+                    { type: 'HEAVY', name: isGermanEnemy ? '친위대 티거 I 호위전차' : '근위대 IS-2 호위전차', hp: 1100, armor: 155, x: -11.5, z: zFront - 29, speed: 0.65, fireInterval: 3.6, dmg: 45 },
+                    { type: 'HEAVY', name: isGermanEnemy ? '친위대 판터 호위전차' : '근위대 KV-2 호위전차', hp: 1100, armor: 155, x: 11.5, z: zFront - 29, speed: 0.65, fireInterval: 3.6, dmg: 45 },
+                    { type: 'ATGUN', name: isGermanEnemy ? '88mm 요새 방어포' : '122mm 요새 방어포', hp: 520, armor: 40, x: -6, z: zFront - 23, speed: 0, fireInterval: 3.2, dmg: 35 },
+                    { type: 'ATGUN', name: isGermanEnemy ? '88mm 요새 방어포' : '122mm 요새 방어포', hp: 520, armor: 40, x: 6, z: zFront - 23, speed: 0, fireInterval: 3.2, dmg: 35 }
+                ];
+                showPhaseBanner(
+                    'OPERATION CITADEL // FINAL PHASE',
+                    '최종 작전: 적 사령부 요새 함락',
+                    '적의 최후 방어선인 거대 콘크리트 사령부 요새가 모습을 드러냈습니다! 가용한 모든 화력을 퍼부어 적 사령부를 파괴하십시오!'
+                );
+                document.getElementById('hud-phase-badge').textContent = 'PHASE 3 / 3';
+                document.getElementById('hud-phase-title').textContent = '최종 사령부 함락';
+                document.getElementById('hud-objective-desc').textContent = '적 사령부 요새와 친위 호위전차를 완전히 섬멸하십시오!';
+                document.getElementById('step-p3').className = 'h-1.5 w-10 sm:w-14 rounded-full bg-amber-500 transition-all';
+            }
+
+            gameState.phaseTotalEnemies = waveDefs.length;
+
+            const uiLayer = document.getElementById('world-ui-layer');
+
+            waveDefs.forEach(def => {
+                let model;
+                if (def.type === 'MEDIUM' || def.type === 'HEAVY') {
+                    model = buildTankMesh(def.type, enemyFactionId);
+                } else {
+                    model = buildBunkerOrATGunMesh(def.type, enemyFactionId);
+                // Create floating HTML health bar & unit nameplate with Subsystem Damage Badges (A-4)
+                const tag = document.createElement('div');
+                tag.className = 'absolute -translate-x-1/2 -translate-y-full pointer-events-none transition-opacity duration-150';
+                const isBoss = def.type === 'CITADEL';
+                const isHeavy = def.type === 'HEAVY';
+                tag.innerHTML = `
+                    <div class="px-1.5 py-0.5 rounded bg-black/85 border ${isBoss ? 'border-red-500' : (isHeavy ? 'border-amber-500/80' : 'border-stone-600/80')} text-center shadow-md">
+                        <div class="flex items-center justify-center gap-1">
+                            <span class="text-[9px] sm:text-[10px] font-bold ${isBoss ? 'text-red-400' : (isHeavy ? 'text-amber-300' : 'text-stone-200')} whitespace-nowrap">${def.name}</span>
+                            <span class="enemy-status-badges flex gap-0.5 text-[9px]"></span>
+                        </div>
+                        <div class="${isBoss ? 'w-28 h-2' : 'w-16 h-1.5'} bg-stone-900 rounded-full overflow-hidden mt-0.5 border border-stone-700">
+                            <div class="enemy-hp-fill h-full ${isBoss ? 'bg-red-500' : 'bg-amber-500'} transition-all duration-100" style="width:100%"></div>
+                        </div>
+                    </div>
+                `;
+                uiLayer.appendChild(tag);
+
+                enemyUnits.push({
+                    type: def.type,
+                    name: def.name,
+                    hp: def.hp,
+                    maxHp: def.hp,
+                    armor: def.armor,
+                    speed: def.speed,
+                    fireInterval: def.fireInterval,
+                    fireTimer: 1.5 + Math.random() * 2.0,
+                    dmg: def.dmg,
+                    mesh: model,
+                    uiElement: tag,
+                    hpFillEl: tag.querySelector('.enemy-hp-fill'),
+                    statusBadgesEl: tag.querySelector('.enemy-status-badges'),
+                    trackBroken: false,      // A-4: Immobilized state
+                    engineFire: false,       // A-4: Engine fire DoT state
+                    burnTimer: 0,
+                    alive: true,
+                    hitRadius: def.type === 'CITADEL' ? 6.8 : (def.type === 'HEAVY' ? 3.2 : 2.5)
+                });
+            });
+
+            updateEnemyHUDCounter();
+        }
+
+        /**
+         * ============================================================================
+         * 6. TACTICAL INPUT, BALLISTICS & WEAPON EXECUTION
+         * ============================================================================
+         */
+        function setupInputListeners() {
+            const container = document.getElementById('canvas-container');
+
+            const updatePointerCoords = (clientX, clientY) => {
+                const rect = container.getBoundingClientRect();
+                pointerNDC.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+                pointerNDC.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+                raycaster.setFromCamera(pointerNDC, camera);
+
+                // First check if directly aiming at an alive enemy mesh
+                const hits = raycaster.intersectObject(groundMesh);
+                if (hits.length > 0) {
+                    currentAimPoint.copy(hits[0].point);
+                    // Clamp within battlefield bounds
+                    currentAimPoint.x = Math.max(-24, Math.min(24, currentAimPoint.x));
+                    const minZ = gameState.stageZOffset - 52;
+                    const maxZ = gameState.stageZOffset - 4;
+                    currentAimPoint.z = Math.max(minZ, Math.min(maxZ, currentAimPoint.z));
+
+                    reticleGroup.position.set(currentAimPoint.x, 0.25, currentAimPoint.z);
+                }
+            };
+
+            container.addEventListener('pointerdown', (e) => {
+                if (!gameState.running || gameState.phaseTransitioning) return;
+                gameState.isPointerDown = true;
+                updatePointerCoords(e.clientX, e.clientY);
+                attemptFireSelectedWeapon();
+            });
+
+            container.addEventListener('pointermove', (e) => {
+                if (!gameState.running) return;
+                updatePointerCoords(e.clientX, e.clientY);
+            });
+
+            window.addEventListener('pointerup', () => {
+                gameState.isPointerDown = false;
+            });
+            window.addEventListener('pointercancel', () => {
+                gameState.isPointerDown = false;
+            });
+
+            // Keyboard hotkeys 1-4 for desktop convenience
+            window.addEventListener('keydown', (e) => {
+                if (!gameState.running) return;
+                if (e.key === '1') selectWeapon(0);
+                if (e.key === '2') selectWeapon(1);
+                if (e.key === '3') selectWeapon(2);
+                if (e.key === '4') selectWeapon(3);
+            });
+        }
+
+        function selectWeapon(index) {
+            gameState.selectedWeapon = index;
+            for (let i = 0; i < 4; i++) {
+                const card = document.getElementById(`wpn-card-${i}`);
+                if (i === index) card.classList.add('active');
+                else card.classList.remove('active');
+            }
+
+            const wpn = gameState.faction.weapons[index];
+            document.getElementById('selected-weapon-hint').textContent = `[${wpn.name}] ${wpn.hint}`;
+
+            // Adjust reticle outer ring size to reflect splash radius
+            const scale = wpn.splash / 4.0;
+            reticleOuter.scale.set(scale, scale, 1);
+        }
+
+        function attemptFireSelectedWeapon() {
+            const slot = gameState.selectedWeapon;
+            const wpn = gameState.faction.weapons[slot];
+
+            // Rotate all allied turrets toward aim point
+            alliedUnits.forEach(u => {
+                const pos = u.mesh.root.position;
+                const dx = currentAimPoint.x - pos.x;
+                const dz = currentAimPoint.z - pos.z;
+                const angle = Math.atan2(dx, dz) - Math.PI;
+                u.mesh.turret.rotation.y = angle;
+            });
+
+            if (slot === 0) {
+                // Slot 0: Heavy Machine Gun (Maxim / MG42)
+                if (gameState.mgOverheated || gameState.weaponCooldowns[0] > 0) return;
+
+                gameState.weaponCooldowns[0] = wpn.cooldown;
+                gameState.mgHeat = Math.min(100, gameState.mgHeat + 5.2);
+                if (gameState.mgHeat >= 100) {
+                    gameState.mgOverheated = true;
+                    spawnFloatingText(currentAimPoint, '기관총 총열 과열!!', 'text-red-400 font-bold text-xs');
+                }
+
+                const isMG42 = gameState.faction.id === 'GERMAN';
+                sfx.playMachineGun(isMG42);
+
+                const mgUnits = alliedUnits.filter(u => u.role === 'MG');
+                const shooter = mgUnits[gameState.stats.shots % mgUnits.length] || alliedUnits[0];
+                const startPos = shooter.mesh.root.position.clone().add(new THREE.Vector3(0, 1.3, -1.2));
+
+                // Slight bullet spread
+                const targetPos = currentAimPoint.clone().add(new THREE.Vector3(
+                    (Math.random() - 0.5) * 2.2,
+                    0.6,
+                    (Math.random() - 0.5) * 2.2
+                ));
+
+                spawnProjectile({
+                    from: startPos,
+                    to: targetPos,
+                    speed: 95,
+                    arcHeight: 0.4,
+                    color: 0xfde047,
+                    size: 0.16,
+                    damage: wpn.damage,
+                    penetration: wpn.penetration,
+                    splash: wpn.splash,
+                    isAllied: true,
+                    shellType: 'MG'
+                });
+
+                createMuzzleFlash(startPos, 0.7);
+                gameState.stats.shots++;
+            } else if (slot === 1) {
+                // Slot 1: Medium Tank Salvo (T-34-85 / Panzer IV) - 2 Tanks Fire Together!
+                if (gameState.weaponCooldowns[1] > 0) return;
+                gameState.weaponCooldowns[1] = wpn.cooldown;
+
+                sfx.playCannon('medium');
+                gameState.cameraShake = Math.max(gameState.cameraShake, 0.35);
+
+                const medTanks = alliedUnits.filter(u => u.role === 'MEDIUM');
+                medTanks.forEach((tank, idx) => {
+                    tank.recoil = 0.65;
+                    const muzzlePos = tank.mesh.root.position.clone().add(new THREE.Vector3(0, 1.75, -2.5));
+                    const spread = new THREE.Vector3((idx === 0 ? -0.6 : 0.6), 0.5, (Math.random() - 0.5) * 0.8);
+                    createMuzzleFlash(muzzlePos, 1.8);
+
+                    spawnProjectile({
+                        from: muzzlePos,
+                        to: currentAimPoint.clone().add(spread),
+                        speed: 58,
+                        arcHeight: 2.2,
+                        color: 0xfb923c,
+                        size: 0.32,
+                        damage: wpn.damage,
+                        penetration: wpn.penetration,
+                        splash: wpn.splash,
+                        isAllied: true,
+                        shellType: 'AP'
+                    });
+                    gameState.stats.shots++;
+                });
+            } else if (slot === 2) {
+                // Slot 2: Heavy Tank / 152mm KV-2 / 88mm Tiger I Siege Cannon (With A-2 Shell Kill-Cam!)
+                if (gameState.weaponCooldowns[2] > 0) return;
+                gameState.weaponCooldowns[2] = wpn.cooldown;
+
+                sfx.playCannon('heavy');
+                gameState.cameraShake = Math.max(gameState.cameraShake, 0.85);
+
+                const heavyTank = alliedUnits.find(u => u.role === 'HEAVY') || alliedUnits[0];
+                heavyTank.recoil = 1.15;
+                const muzzlePos = heavyTank.mesh.root.position.clone().add(new THREE.Vector3(0, 2.2, -3.2));
+
+                createMuzzleFlash(muzzlePos, 3.0);
+                createShockwaveRing(muzzlePos, 5.5, 0xf59e0b);
+
+                const heavyShell = spawnProjectile({
+                    from: muzzlePos,
+                    to: currentAimPoint.clone(),
+                    speed: 44,
+                    arcHeight: 4.8,
+                    color: 0xfef08a,
+                    size: 0.48,
+                    damage: wpn.damage,
+                    penetration: wpn.penetration,
+                    splash: wpn.splash,
+                    isAllied: true,
+                    shellType: 'HEAVY'
+                });
+                gameState.stats.shots++;
+
+                // A-2: Activate Dramatic Shell Kill-Cam if enabled and aiming near an alive enemy
+                if (gameState.autoKillCam && !gameState.activeKillCamShell) {
+                    const nearEnemy = enemyUnits.find(e => e.alive && e.mesh.root.position.distanceTo(currentAimPoint) < 10.5);
+                    if (nearEnemy) {
+                        activateShellKillCam(heavyShell, nearEnemy);
+                    }
+                }
+            } else if (slot === 3) {
+                // Slot 3: Ultimate Fire Support - A-1 3D Bomber Squadron (Ju-87 Stuka / IL-2 Sturmovik) + Rocket Barrage!
+                if (gameState.weaponCooldowns[3] > 0) return;
+                gameState.weaponCooldowns[3] = wpn.cooldown;
+
+                const isGerman = gameState.faction.id === 'GERMAN';
+                sfx.playRocketWhoosh(isGerman);
+                postRadioLog(
+                    '항공/포병 지원',
+                    isGerman
+                        ? '✈️ Ju-87 슈투카 급강하 폭격 편대 진입! 예리코의 나팔 가동!'
+                        : '✈️ IL-2 슈투르모빅 공격기 편대 및 BM-13 카튜샤 일제 사격 개시!'
+                );
+
+                // A-1: Spawn 3D Warplane Squadron diving over the target zone!
+                spawnAirStrikeSquadron(currentAimPoint.clone(), gameState.faction.id);
+
+                // Launch salvos of Katyusha / Nebelwerfer rockets from behind allied lines
+                const targetCenter = currentAimPoint.clone();
+                for (let r = 0; r < 14; r++) {
+                    setTimeout(() => {
+                        if (!gameState.running) return;
+                        if (r % 3 === 0) sfx.playRocketWhoosh(false);
+
+                        const launchPos = new THREE.Vector3(
+                            (Math.random() - 0.5) * 24,
+                            4.5 + Math.random() * 3,
+                            gameState.stageZOffset + 24
+                        );
+                        const impactPos = targetCenter.clone().add(new THREE.Vector3(
+                            (Math.random() - 0.5) * 14,
+                            0,
+                            (Math.random() - 0.5) * 12
+                        ));
+
+                        spawnProjectile({
+                            from: launchPos,
+                            to: impactPos,
+                            speed: 38 + Math.random() * 8,
+                            arcHeight: 14 + Math.random() * 5,
+                            color: 0xf97316,
+                            size: 0.38,
+                            damage: wpn.damage,
+                            penetration: wpn.penetration,
+                            splash: wpn.splash,
+                            isAllied: true,
+                            shellType: 'ROCKET'
+                        });
+                        gameState.stats.shots++;
+                    }, r * 110);
+                }
+            }
+        }
+
+        function spawnAirStrikeSquadron(targetPos, factionId) {
+            // Spawn V-formation of 3 Warplanes (Leader + 2 Wingmen)
+            const offsets = [
+                { x: 0, y: 0, z: 0, delay: 0 },
+                { x: -6.5, y: 1.8, z: 5.5, delay: 0.18 },
+                { x: 6.5, y: 1.8, z: 5.5, delay: 0.25 }
+            ];
+
+            offsets.forEach((off, idx) => {
+                const planeModel = buildWarplaneMesh(factionId);
+                const startPos = new THREE.Vector3(
+                    targetPos.x + off.x,
+                    34 + off.y,
+                    gameState.stageZOffset + 42 + off.z
+                );
+                planeModel.root.position.copy(startPos);
+                scene.add(planeModel.root);
+
+                airSquadrons.push({
+                    model: planeModel,
+                    startPos: startPos,
+                    diveApex: new THREE.Vector3(targetPos.x + off.x * 0.7, 9.5 + idx * 0.8, targetPos.z + off.z * 0.4),
+                    exitPos: new THREE.Vector3(targetPos.x + off.x * 1.1, 38, targetPos.z - 65),
+                    elapsed: -off.delay,
+                    duration: 3.1,
+                    droppedBomb: false,
+                    strafeTimer: 0,
+                    factionId: factionId
+                });
+            });
+        }
+
+        function activateShellKillCam(shellObj, targetEnemy) {
+            gameState.activeKillCamShell = shellObj;
+            gameState.killCamHoldTimer = 0;
+            gameState.killCamImpactPos = null;
+
+            const overlay = document.getElementById('killcam-overlay');
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+
+            const isGerman = gameState.faction.id === 'GERMAN';
+            document.getElementById('killcam-shell-info').textContent = isGerman
+                ? '88mm PzGr. 39 APCBC // VELOCITY: 810 m/s'
+                : '152mm OF-530 HE-FRAG // VELOCITY: 655 m/s';
+            document.getElementById('killcam-target-info').textContent = `🎯 표적 [${targetEnemy.name}] 장갑 충돌 궤도 추적 중...`;
+        }
+
+        function toggleAutoKillCam() {
+            gameState.autoKillCam = !gameState.autoKillCam;
+            const btn = document.getElementById('btn-killcam-toggle');
+            const label = document.getElementById('killcam-toggle-label');
+            if (gameState.autoKillCam) {
+                label.textContent = '포탄킬캠 ON';
+                btn.className = 'px-2 py-1 rounded-lg text-[10px] sm:text-xs font-mono-tech bg-red-950/90 text-red-300 border border-red-500/50 hover:bg-red-900/80 active:scale-95 flex items-center gap-1';
+            } else {
+                label.textContent = '포탄킬캠 OFF';
+                btn.className = 'px-2 py-1 rounded-lg text-[10px] sm:text-xs font-mono-tech bg-stone-800/80 text-stone-400 border border-stone-600/40 active:scale-95 flex items-center gap-1';
+            }
+        }
+
+        function useRepairSupport() {
+            if (!gameState.running || gameState.repairCooldown > 0) return;
+            gameState.repairCooldown = 18.0;
+            gameState.alliedHP = Math.min(gameState.alliedMaxHP, gameState.alliedHP + 320);
+            updateAlliedHPBar();
+
+            const centerPos = new THREE.Vector3(0, 2, gameState.stageZOffset + 10);
+            spawnFloatingText(centerPos, '🔧 긴급 야전수리 완료 (+320 HP)', 'text-emerald-400 font-black text-sm');
+            createShockwaveRing(centerPos, 9, 0x10b981);
+        }
+
+        function useSmokeSupport() {
+            if (!gameState.running || gameState.smokeCooldown > 0) return;
+            gameState.smokeCooldown = 20.0;
+            gameState.smokeActiveTimer = 8.0;
+
+            const zPos = gameState.stageZOffset + 7;
+            spawnFloatingText(new THREE.Vector3(0, 3, zPos), '💨 전선 연막차장 전개! (8초간 적 명중률 대폭 감소)', 'text-sky-300 font-black text-sm');
+
+            // Spawn dense white/grey smoke clouds along allied front
+            for (let i = -10; i <= 10; i += 2.5) {
+                for (let k = 0; k < 4; k++) {
+                    spawnParticle({
+                        pos: new THREE.Vector3(i + (Math.random() - 0.5) * 2, 0.8 + Math.random() * 1.5, zPos + (Math.random() - 0.5) * 2),
+                        vel: new THREE.Vector3((Math.random() - 0.5) * 0.8, 0.6 + Math.random() * 0.5, (Math.random() - 0.5) * 0.8),
+                        color: 0xd6d3d1,
+                        size: 2.8 + Math.random() * 1.5,
+                        life: 6.5 + Math.random() * 2.0,
+                        grow: 1.4
+                    });
+                }
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 7. PROJECTILES, PENETRATION VS RICOCHET, & TURRET POP-OFF PHYSICS
+         * ============================================================================
+         */
+        function spawnProjectile(cfg) {
+            const group = new THREE.Group();
+
+            // Glowing tracer core
+            const geo = new THREE.SphereGeometry(cfg.size, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: cfg.color });
+            const core = new THREE.Mesh(geo, mat);
+            group.add(core);
+
+            // Elongated tracer streak
+            const tailGeo = new THREE.ConeGeometry(cfg.size * 0.8, cfg.size * 5.5, 6);
+            tailGeo.rotateX(Math.PI / 2);
+            const tailMat = new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.65 });
+            const tail = new THREE.Mesh(tailGeo, tailMat);
+            tail.position.z = cfg.size * 2.7;
+            group.add(tail);
+
+            group.position.copy(cfg.from);
+            scene.add(group);
+
+            const distance = cfg.from.distanceTo(cfg.to);
+            const duration = Math.max(0.12, distance / cfg.speed);
+
+            const projObj = {
+                mesh: group,
+                from: cfg.from.clone(),
+                to: cfg.to.clone(),
+                elapsed: 0,
+                duration: duration,
+                arcHeight: cfg.arcHeight,
+                damage: cfg.damage,
+                penetration: cfg.penetration,
+                splash: cfg.splash,
+                isAllied: cfg.isAllied,
+                shellType: cfg.shellType
+            };
+            projectiles.push(projObj);
+            return projObj;
+        }
+
+        function attachArmorHitScar(enemy, hitPos, isPenetration) {
+            if (!enemy || !enemy.mesh || !enemy.mesh.root) return;
+
+            const localPos = enemy.mesh.root.worldToLocal(hitPos.clone());
+            localPos.y = Math.max(0.55, Math.min(2.1, localPos.y));
+            localPos.z = Math.max(-1.8, Math.min(1.8, localPos.z));
+
+            const scarGroup = new THREE.Group();
+            scarGroup.position.copy(localPos);
+
+            // Molten glowing penetration hole or ricochet gouge
+            const holeGeo = new THREE.CircleGeometry(isPenetration ? 0.28 : 0.16, 10);
+            const holeMat = new THREE.MeshBasicMaterial({
+                color: isPenetration ? 0xf97316 : 0xfef08a,
+                side: THREE.DoubleSide
+            });
+            const hole = new THREE.Mesh(holeGeo, holeMat);
+            hole.position.z = 0.05;
+            scarGroup.add(hole);
+
+            // Scorched dark rim around the hole
+            const rimGeo = new THREE.RingGeometry(isPenetration ? 0.26 : 0.14, isPenetration ? 0.48 : 0.28, 10);
+            const rimMat = new THREE.MeshBasicMaterial({
+                color: 0x18181b,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.9
+            });
+            const rim = new THREE.Mesh(rimGeo, rimMat);
+            rim.position.z = 0.04;
+            scarGroup.add(rim);
+
+            enemy.mesh.root.add(scarGroup);
+        }
+
+        function triggerTrackDestruction(enemy) {
+            if (enemy.trackBroken || enemy.speed <= 0) return;
+            enemy.trackBroken = true;
+            enemy.speed = 0;
+
+            // Tilt hull slightly to show broken suspension/track
+            enemy.mesh.root.rotation.z = (Math.random() > 0.5 ? 1 : -1) * 0.085;
+
+            // Spawn detached broken caterpillar track slab on the ground beside the tank
+            const brokenSlab = new THREE.Mesh(
+                new THREE.BoxGeometry(0.85, 0.22, 3.6),
+                new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.9 })
+            );
+            brokenSlab.position.copy(enemy.mesh.root.position).add(new THREE.Vector3(1.5, 0.12, 0.4));
+            brokenSlab.rotation.y = (Math.random() - 0.5) * 0.4;
+            scene.add(brokenSlab);
+            sceneryProps.push(brokenSlab);
+
+            createImpactSparks(enemy.mesh.root.position, 14);
+            spawnFloatingText(
+                enemy.mesh.root.position.clone().add(new THREE.Vector3(0, 3.2, 0)),
+                '⛓️ 궤도 파손! (기동불능)',
+                'text-amber-300 font-black text-xs sm:text-sm'
+            );
+            postRadioLog('부위 파괴', `적 [${enemy.name}]의 궤도를 끊어 기동 불능 상태로 만들었습니다!`);
+            updateEnemyStatusBadges(enemy);
+        }
+
+        function triggerEngineFire(enemy) {
+            if (enemy.engineFire) return;
+            enemy.engineFire = true;
+            enemy.fireInterval *= 1.45; // Crew panic slows reload speed
+
+            spawnFloatingText(
+                enemy.mesh.root.position.clone().add(new THREE.Vector3(0, 3.6, 0)),
+                '🔥 엔진룸 화재 발생! (지속 피해)',
+                'text-orange-400 font-black text-xs sm:text-sm'
+            );
+            postRadioLog('화재 관측', `적 [${enemy.name}] 엔진룸에 화재가 발생하여 지속 피해를 입힙니다!`);
+            updateEnemyStatusBadges(enemy);
+        }
+
+        function updateEnemyStatusBadges(enemy) {
+            if (!enemy.statusBadgesEl) return;
+            let badges = '';
+            if (enemy.trackBroken) badges += '<span class="px-1 rounded bg-amber-500/30 text-amber-300 border border-amber-500/50">⛓️궤도</span>';
+            if (enemy.engineFire) badges += '<span class="px-1 rounded bg-red-600/40 text-orange-300 border border-red-500/60">🔥화재</span>';
+            enemy.statusBadgesEl.innerHTML = badges;
+        }
+
+        function handleProjectileImpact(proj) {
+            const hitPos = proj.to.clone();
+
+            // If this projectile was being tracked by the Shell Kill-Cam, transition to post-impact hold!
+            if (gameState.activeKillCamShell === proj) {
+                gameState.activeKillCamShell = null;
+                gameState.killCamHoldTimer = 1.05;
+                gameState.killCamImpactPos = hitPos.clone();
+                document.getElementById('killcam-target-info').textContent = '💥 장갑 관통 및 내부 충격파 확산!';
+            }
+
+            if (!proj.isAllied) {
+                sfx.playExplosion(0.85);
+                createExplosionEffect(hitPos, 1.4);
+
+                if (gameState.smokeActiveTimer > 0 && Math.random() < 0.72) {
+                    spawnFloatingText(hitPos, '연막 회피!', 'text-sky-300 font-bold text-xs');
+                    return;
+                }
+
+                gameState.alliedHP = Math.max(0, gameState.alliedHP - proj.damage);
+                gameState.cameraShake = Math.max(gameState.cameraShake, 0.45);
+                triggerDamageVignette();
+                updateAlliedHPBar();
+
+                if (gameState.alliedHP <= 0) {
+                    endGame(false);
+                }
+                return;
+            }
+
+            // Allied Projectile Impact
+            const isMG = proj.shellType === 'MG';
+            const isHeavy = proj.shellType === 'HEAVY' || proj.shellType === 'ROCKET';
+
+            if (!isMG) {
+                sfx.playExplosion(isHeavy ? 1.55 : 1.0);
+                createExplosionEffect(hitPos, isHeavy ? 2.4 : 1.35);
+                createShockwaveRing(hitPos, proj.splash, isHeavy ? 0xef4444 : 0xf59e0b);
+            } else {
+                createImpactSparks(hitPos, 5);
+            }
+
+            enemyUnits.forEach(enemy => {
+                if (!enemy.alive) return;
+                const dist = enemy.mesh.root.position.distanceTo(hitPos);
+                const effectiveRadius = proj.splash + enemy.hitRadius;
+
+                if (dist <= effectiveRadius) {
+                    // Armor Penetration vs Ricochet Calculation
+                    if (proj.penetration < enemy.armor) {
+                        const ricochetChance = isMG ? 0.92 : 0.48;
+                        if (Math.random() < ricochetChance) {
+                            sfx.playRicochet();
+                            createImpactSparks(hitPos, 10);
+                            attachArmorHitScar(enemy, hitPos, false);
+                            if (!isMG || Math.random() < 0.25) {
+                                spawnFloatingText(
+                                    enemy.mesh.root.position.clone().add(new THREE.Vector3(0, 2.8, 0)),
+                                    '도탄! (RICOCHET)',
+                                    'text-stone-300 font-mono-tech font-bold text-xs'
+                                );
+                            }
+                            return;
+                        }
+                    }
+
+                    // Penetrating Hit: Attach 3D glowing shell scar on armor!
+                    if (!isMG) {
+                        attachArmorHitScar(enemy, hitPos, true);
+                    }
+
+                    const falloff = isMG ? 1.0 : Math.max(0.35, 1 - (dist / (effectiveRadius * 1.25)));
+                    const finalDmg = Math.round(proj.damage * falloff);
+                    enemy.hp = Math.max(0, enemy.hp - finalDmg);
+
+                    const pct = Math.max(0, (enemy.hp / enemy.maxHp) * 100);
+                    if (enemy.hpFillEl) enemy.hpFillEl.style.width = `${pct}%`;
+
+                    if (!isMG || Math.random() < 0.3) {
+                        spawnFloatingText(
+                            enemy.mesh.root.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.5, 2.6, 0)),
+                            isHeavy ? `관통 폭발! -${finalDmg}` : `-${finalDmg}`,
+                            isHeavy ? 'text-amber-300 font-black text-sm' : 'text-amber-400 font-bold text-xs'
+                        );
+                    }
+
+                    // A-4: Subsystem Critical Damage Checks (Track Break & Engine Fire)
+                    const isTank = enemy.type === 'MEDIUM' || enemy.type === 'HEAVY';
+                    if (enemy.alive && enemy.hp > 0 && isTank && !isMG) {
+                        if (!enemy.trackBroken && Math.random() < 0.38) {
+                            triggerTrackDestruction(enemy);
+                        } else if (!enemy.engineFire && Math.random() < 0.32) {
+                            triggerEngineFire(enemy);
+                        }
+                    }
+
+                    if (enemy.hp <= 0) {
+                        destroyEnemyUnit(enemy);
+                    }
+                }
+            });
+        }
+
+        function destroyEnemyUnit(enemy) {
+            enemy.alive = false;
+            gameState.stats.kills++;
+            if (enemy.uiElement) enemy.uiElement.remove();
+
+            const pos = enemy.mesh.root.position.clone();
+            const isBoss = enemy.type === 'CITADEL';
+            const isTank = enemy.type === 'MEDIUM' || enemy.type === 'HEAVY';
+
+            sfx.playExplosion(isBoss ? 2.2 : 1.7);
+            gameState.cameraShake = Math.max(gameState.cameraShake, isBoss ? 1.6 : 0.95);
+
+            createExplosionEffect(pos, isBoss ? 4.5 : 2.6);
+            createShockwaveRing(pos, isBoss ? 18 : 9.5, 0xf97316);
+
+            // Blacken destroyed hull
+            enemy.mesh.root.traverse(child => {
+                if (child.isMesh) {
+                    child.material = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.95 });
+                }
+            });
+
+            if (isTank && enemy.mesh.turret) {
+                // Iconic WWII Tank Ammo Rack Explosion: Pop the Turret into the Sky!
+                spawnFloatingText(pos.clone().add(new THREE.Vector3(0, 3.8, 0)), '💥 탄약고 유폭!! (AMMO RACK)', 'text-red-400 font-black text-sm sm:text-base');
+                postRadioLog('관측반 보고', `적 기갑 [${enemy.name}] 탄약고 유폭 격파 확인! 잔여 적군 ${enemyUnits.filter(e => e.alive).length}기.`);
+
+                const worldPos = new THREE.Vector3();
+                enemy.mesh.turret.getWorldPosition(worldPos);
+                enemy.mesh.root.remove(enemy.mesh.turret);
+
+                enemy.mesh.turret.position.copy(worldPos);
+                scene.add(enemy.mesh.turret);
+
+                flyingTurrets.push({
+                    mesh: enemy.mesh.turret,
+                    vel: new THREE.Vector3((Math.random() - 0.5) * 5, 13 + Math.random() * 5, (Math.random() - 0.5) * 5),
+                    rotVel: new THREE.Vector3(Math.random() * 5, Math.random() * 5, Math.random() * 5),
+                    bounces: 0
+                });
+            } else if (isBoss) {
+                spawnFloatingText(pos.clone().add(new THREE.Vector3(0, 6.5, 0)), '🔥 적 최고사령부 요새 붕괴!!', 'text-amber-300 font-black text-base sm:text-lg');
+                postRadioLog('사령부 무전', '적 최고사령부 콘크리트 요새가 완전히 붕괴되었습니다! 작전 대성공!');
+            } else {
+                spawnFloatingText(pos.clone().add(new THREE.Vector3(0, 2.8, 0)), '진지 완파!', 'text-amber-400 font-black text-xs sm:text-sm');
+                postRadioLog('전선 보고', `적 방어 진지 [${enemy.name}] 완파! 돌파구가 열리고 있습니다.`);
+            }
+
+            updateEnemyHUDCounter();
+            checkPhaseClearCondition();
+        }
+
+        function checkPhaseClearCondition() {
+            const aliveCount = enemyUnits.filter(e => e.alive).length;
+            if (aliveCount > 0 || gameState.phaseTransitioning) return;
+
+            gameState.phaseTransitioning = true;
+
+            if (gameState.phase < 3) {
+                // Advance to next phase!
+                const nextPhase = gameState.phase + 1;
+                showPhaseBanner(
+                    `PHASE ${gameState.phase} CLEAR!`,
+                    '방어선 돌파 성공! 아군 기갑사단 전진!',
+                    '적 전초 진지가 궤멸되었습니다. 다음 작전 구역으로 전차 부대가 진격합니다...'
+                );
+
+                setTimeout(() => {
+                    if (!gameState.running) return;
+                    gameState.phase = nextPhase;
+                    gameState.stageZOffset -= 55; // Move frontline 55m deeper into enemy territory
+                    deployAlliedLine();
+                    spawnPhaseWave(nextPhase);
+                    gameState.phaseTransitioning = false;
+                }, 2800);
+            } else {
+                // Phase 3 Boss Defeated -> Victory!
+                setTimeout(() => {
+                    endGame(true);
+                }, 2200);
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 8. VISUAL EFFECTS (PARTICLES, MUZZLE FLASHES, SHOCKWAVES, FLOATING UI)
+         * ============================================================================
+         */
+        function spawnParticle(cfg) {
+            const geo = new THREE.SphereGeometry(cfg.size, 6, 6);
+            const mat = new THREE.MeshBasicMaterial({
+                color: cfg.color,
+                transparent: true,
+                opacity: cfg.opacity || 0.85
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(cfg.pos);
+            scene.add(mesh);
+
+            particles.push({
+                mesh,
+                vel: cfg.vel,
+                life: cfg.life,
+                maxLife: cfg.life,
+                grow: cfg.grow || 1.0,
+                gravity: cfg.gravity || 0
+            });
+        }
+
+        function createMuzzleFlash(pos, scale = 1.0) {
+            // A-3: Dynamic PointLight flash on muzzle fire
+            spawnTransientLight(pos, 0xfbbf24, 2.2 * scale, 18 * scale, 0.14);
+
+            for (let i = 0; i < 6; i++) {
+                spawnParticle({
+                    pos: pos.clone(),
+                    vel: new THREE.Vector3((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3, -4 - Math.random() * 5),
+                    color: i % 2 === 0 ? 0xfef08a : 0xf97316,
+                    size: (0.35 + Math.random() * 0.35) * scale,
+                    life: 0.14 + Math.random() * 0.08,
+                    grow: 1.8
+                });
+            }
+        }
+
+        function createImpactSparks(pos, count = 6) {
+            for (let i = 0; i < count; i++) {
+                spawnParticle({
+                    pos: pos.clone().add(new THREE.Vector3(0, 0.4, 0)),
+                    vel: new THREE.Vector3((Math.random() - 0.5) * 9, 3 + Math.random() * 6, (Math.random() - 0.5) * 9),
+                    color: 0xfde047,
+                    size: 0.14,
+                    life: 0.25 + Math.random() * 0.15,
+                    grow: 0.5,
+                    gravity: 18
+                });
+            }
+        }
+
+        function createExplosionEffect(pos, scale = 1.0) {
+            // A-3: Dynamic PointLight flash on explosion
+            spawnTransientLight(pos, 0xf97316, 3.4 * scale, 28 * scale, 0.38);
+
+            // Core fireball particles
+            const count = Math.floor(14 * scale);
+            for (let i = 0; i < count; i++) {
+                const isSmoke = i > count * 0.55;
+                spawnParticle({
+                    pos: pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.5 * scale, 0.5, (Math.random() - 0.5) * 1.5 * scale)),
+                    vel: new THREE.Vector3(
+                        (Math.random() - 0.5) * 9 * scale,
+                        (2.5 + Math.random() * 7) * scale,
+                        (Math.random() - 0.5) * 9 * scale
+                    ),
+                    color: isSmoke ? 0x27272a : (i % 2 === 0 ? 0xf97316 : 0xfef08a),
+                    size: (0.55 + Math.random() * 0.65) * scale,
+                    life: isSmoke ? (0.9 + Math.random() * 0.7) : (0.35 + Math.random() * 0.25),
+                    grow: isSmoke ? 1.6 : 1.2,
+                    gravity: isSmoke ? -1.5 : 8
+                });
+            }
+        }
+
+        function createShockwaveRing(pos, maxRadius, colorHex) {
+            const geo = new THREE.RingGeometry(0.4, 0.9, 32);
+            geo.rotateX(-Math.PI / 2);
+            const mat = new THREE.MeshBasicMaterial({
+                color: colorHex,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.85
+            });
+            const ring = new THREE.Mesh(geo, mat);
+            ring.position.set(pos.x, 0.22, pos.z);
+            scene.add(ring);
+
+            shockwaves.push({
+                mesh: ring,
+                elapsed: 0,
+                duration: 0.45,
+                maxScale: maxRadius
+            });
+        }
+
+        function worldToScreen(worldVec) {
+            const vec = worldVec.clone();
+            vec.project(camera);
+            const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-(vec.y * 0.5) + 0.5) * window.innerHeight;
+            return { x, y, visible: vec.z < 1.0 };
+        }
+
+        function spawnFloatingText(worldPos, text, cssClasses) {
+            const screen = worldToScreen(worldPos);
+            if (!screen.visible) return;
+
+            const layer = document.getElementById('world-ui-layer');
+            const el = document.createElement('div');
+            el.className = `combat-float-text ${cssClasses}`;
+            el.style.left = `${screen.x}px`;
+            el.style.top = `${screen.y}px`;
+            el.textContent = text;
+            layer.appendChild(el);
+
+            setTimeout(() => el.remove(), 1250);
+        }
+
+        /**
+         * ============================================================================
+         * 9. HUD & UI STATE SYNCHRONIZATION
+         * ============================================================================
+         */
+        function updateAlliedHPBar() {
+            const pct = Math.max(0, Math.round((gameState.alliedHP / gameState.alliedMaxHP) * 100));
+            document.getElementById('allied-hp-text').textContent = `${gameState.alliedHP} / ${gameState.alliedMaxHP}`;
+            const bar = document.getElementById('allied-hp-bar');
+            bar.style.width = `${pct}%`;
+            if (pct < 35) {
+                bar.className = 'h-full bg-red-500 transition-all duration-200';
+            } else if (pct < 65) {
+                bar.className = 'h-full bg-amber-500 transition-all duration-200';
+            } else {
+                bar.className = 'h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-200';
+            }
+        }
+
+        function updateEnemyHUDCounter() {
+            const alive = enemyUnits.filter(e => e.alive).length;
+            const total = Math.max(1, gameState.phaseTotalEnemies);
+            const pct = Math.round((alive / total) * 100);
+            document.getElementById('enemy-count-text').textContent = `${alive}기 생존`;
+            document.getElementById('enemy-wave-bar').style.width = `${pct}%`;
+        }
+
+        function triggerDamageVignette() {
+            const vig = document.getElementById('damage-vignette');
+            vig.style.opacity = '1';
+            setTimeout(() => {
+                vig.style.opacity = '0';
+            }, 260);
+        }
+
+        let bannerTimeout = null;
+        function showPhaseBanner(sub, title, desc) {
+            const banner = document.getElementById('phase-banner');
+            document.getElementById('banner-subtitle').textContent = sub;
+            document.getElementById('banner-title').textContent = title;
+            document.getElementById('banner-desc').textContent = desc;
+            banner.classList.remove('hidden');
+
+            if (bannerTimeout) clearTimeout(bannerTimeout);
+            bannerTimeout = setTimeout(() => {
+                banner.classList.add('hidden');
+            }, 3600);
+        }
+
+        function setCameraMode(modeIndex) {
+            gameState.cameraMode = modeIndex;
+            gameState.cameraZoomed = (modeIndex === 2);
+
+            for (let i = 0; i < 5; i++) {
+                const btn = document.getElementById(`cam-btn-${i}`);
+                if (btn) {
+                    if (i === modeIndex) btn.classList.add('active');
+                    else btn.classList.remove('active');
+                }
+            }
+
+            const modeCfg = CAMERA_MODES[modeIndex] || CAMERA_MODES[0];
+            camera.fov = modeCfg.fov;
+            camera.updateProjectionMatrix();
+
+            const sniperOverlay = document.getElementById('sniper-overlay');
+            if (modeIndex === 2) {
+                sniperOverlay.classList.remove('hidden');
+                sniperOverlay.classList.add('flex');
+                updateScopeTelemetry();
+            } else {
+                sniperOverlay.classList.add('hidden');
+                sniperOverlay.classList.remove('flex');
+            }
+
+            const camInd = document.getElementById('hud-cam-indicator');
+            if (camInd) camInd.textContent = `CAM: ${modeCfg.name}`;
+            postRadioLog('시점 전환', `카메라 모드가 [${modeCfg.name}] 시점으로 전환되었습니다.`);
+        }
+
+        function cycleCameraMode() {
+            const nextMode = (gameState.cameraMode + 1) % CAMERA_MODES.length;
+            setCameraMode(nextMode);
+        }
+
+        function toggleCameraZoom() {
+            cycleCameraMode();
+        }
+
+        function renderRadarMinimap() {
+            const canvas = document.getElementById('radar-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2;
+            const cy = h - 10;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Radar Grid Circles
+            ctx.strokeStyle = 'rgba(16, 185, 129, 0.28)';
+            ctx.lineWidth = 1;
+            [14, 28, 42].forEach(r => {
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, Math.PI, Math.PI * 2);
+                ctx.stroke();
+            });
+
+            // Draw Allied Units (Green dots near bottom)
+            ctx.fillStyle = '#10b981';
+            alliedUnits.forEach(u => {
+                const rx = cx + (u.mesh.root.position.x / 26) * (w * 0.45);
+                const rz = cy - 3;
+                ctx.fillRect(rx - 1.5, rz - 1.5, 3, 3);
+            });
+
+            // Draw Alive Enemy Units (Red/Amber blips)
+            enemyUnits.forEach(e => {
+                if (!e.alive) return;
+                const relZ = (gameState.stageZOffset + 12) - e.mesh.root.position.z;
+                const rx = cx + (e.mesh.root.position.x / 26) * (w * 0.45);
+                const ry = Math.max(5, cy - (relZ / 62) * (h - 14));
+
+                ctx.fillStyle = e.type === 'CITADEL' ? '#f59e0b' : '#ef4444';
+                ctx.beginPath();
+                ctx.arc(rx, ry, e.type === 'CITADEL' ? 3.5 : 2.2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw Aim Reticle Cross on Radar
+            const aimRelZ = (gameState.stageZOffset + 12) - currentAimPoint.z;
+            const ax = cx + (currentAimPoint.x / 26) * (w * 0.45);
+            const ay = Math.max(5, cy - (aimRelZ / 62) * (h - 14));
+            ctx.strokeStyle = '#fde047';
+            ctx.strokeRect(ax - 2, ay - 2, 4, 4);
+        }
+
+        function toggleMute() {
+            sfx.muted = !sfx.muted;
+            document.getElementById('btn-audio-toggle').textContent = sfx.muted ? '🔇' : '🔊';
+        }
+
+        /**
+         * ============================================================================
+         * 10. MAIN GAME LOOP (AI MOVEMENT, RECOIL, PROJECTILES, CAMERA WORK)
+         * ============================================================================
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const dt = Math.min(clock.getDelta(), 0.1);
+
+            if (gameState.running) {
+                updateSimulation(dt);
+            } else {
+                updatePrologueAtmosphere(dt);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function updatePrologueAtmosphere(dt) {
+            const t = clock.getElapsedTime();
+
+            if (gameState.inPrologue) {
+                const ch = STORY_CHAPTERS[gameState.storyIndex] || STORY_CHAPTERS[0];
+                const swayX = Math.sin(t * 0.35) * 3.5;
+                const swayY = Math.cos(t * 0.25) * 1.2;
+
+                camera.position.x += ((ch.camPos.x + swayX) - camera.position.x) * dt * 2.2;
+                camera.position.y += ((ch.camPos.y + swayY) - camera.position.y) * dt * 2.2;
+                camera.position.z += (ch.camPos.z - camera.position.z) * dt * 2.2;
+                camera.lookAt(ch.camLook.x, ch.camLook.y, ch.camLook.z);
+
+                gameState.storyAmbientTimer -= dt;
+                if (gameState.storyAmbientTimer <= 0) {
+                    gameState.storyAmbientTimer = 1.4 + Math.random() * 1.8;
+                    const randPos = new THREE.Vector3((Math.random() - 0.5) * 38, 0.5, -10 - Math.random() * 40);
+                    createExplosionEffect(randPos, 1.3 + Math.random() * 0.9);
+                    createShockwaveRing(randPos, 6, 0xf97316);
+                }
+            } else {
+                camera.position.set(Math.sin(t * 0.2) * 14, 24, 28);
+                camera.lookAt(0, 1, -18);
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const pt = particles[i];
+                pt.life -= dt;
+                if (pt.life <= 0) {
+                    scene.remove(pt.mesh);
+                    particles.splice(i, 1);
+                    continue;
+                }
+                pt.vel.y -= pt.gravity * dt;
+                pt.mesh.position.addScaledVector(pt.vel, dt);
+                const scale = 1 + (1 - pt.life / pt.maxLife) * pt.grow;
+                pt.mesh.scale.setScalar(scale);
+                pt.mesh.material.opacity = (pt.life / pt.maxLife) * 0.85;
+            }
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const sw = shockwaves[i];
+                sw.elapsed += dt;
+                const progress = sw.elapsed / sw.duration;
+                if (progress >= 1) {
+                    scene.remove(sw.mesh);
+                    shockwaves.splice(i, 1);
+                    continue;
+                }
+                const s = 1 + progress * sw.maxScale;
+                sw.mesh.scale.set(s, s, 1);
+                sw.mesh.material.opacity = (1 - progress) * 0.85;
+            }
+        }
+
+        function updateSimulation(rawDt) {
+            // A-2: Apply dramatic slow-motion (0.38x) while Shell Kill-Cam is tracking a shell in flight!
+            const inKillCam = Boolean(gameState.activeKillCamShell || gameState.killCamHoldTimer > 0);
+            const dt = gameState.activeKillCamShell ? rawDt * 0.38 : rawDt;
+
+            gameState.timeElapsed += rawDt;
+
+            const mins = String(Math.floor(gameState.timeElapsed / 60)).padStart(2, '0');
+            const secs = String(Math.floor(gameState.timeElapsed % 60)).padStart(2, '0');
+            document.getElementById('hud-timer').textContent = `${mins}:${secs}`;
+
+            if (gameState.isPointerDown && gameState.selectedWeapon === 0) {
+                attemptFireSelectedWeapon();
+            }
+
+            if (!gameState.isPointerDown || gameState.selectedWeapon !== 0) {
+                gameState.mgHeat = Math.max(0, gameState.mgHeat - rawDt * 28);
+                if (gameState.mgOverheated && gameState.mgHeat <= 20) {
+                    gameState.mgOverheated = false;
+                }
+            }
+
+            const mgBar = document.getElementById('wpn-bar-0');
+            const mgStatus = document.getElementById('wpn-status-0');
+            mgBar.style.width = `${gameState.mgHeat}%`;
+            if (gameState.mgOverheated) {
+                mgBar.className = 'h-full bg-red-500 transition-all duration-75';
+                mgStatus.textContent = 'OVERHEAT';
+                mgStatus.className = 'text-red-400 font-bold';
+            } else {
+                mgBar.className = 'h-full bg-amber-500 transition-all duration-75';
+                mgStatus.textContent = '연사 가능';
+                mgStatus.className = 'text-emerald-400';
+            }
+
+            for (let i = 0; i < 4; i++) {
+                if (gameState.weaponCooldowns[i] > 0) {
+                    gameState.weaponCooldowns[i] = Math.max(0, gameState.weaponCooldowns[i] - rawDt);
+                }
+                if (i >= 1) {
+                    const maxCd = gameState.faction.weapons[i].cooldown;
+                    const rem = gameState.weaponCooldowns[i];
+                    const readyPct = Math.round(((maxCd - rem) / maxCd) * 100);
+                    const barEl = document.getElementById(`wpn-bar-${i}`);
+                    const stEl = document.getElementById(`wpn-status-${i}`);
+                    barEl.style.width = `${readyPct}%`;
+                    if (rem > 0) {
+                        stEl.textContent = `${rem.toFixed(1)}s`;
+                        stEl.className = 'text-amber-400';
+                    } else {
+                        stEl.textContent = 'READY';
+                        stEl.className = 'text-emerald-400';
+                    }
+                }
+            }
+
+            if (gameState.smokeActiveTimer > 0) gameState.smokeActiveTimer = Math.max(0, gameState.smokeActiveTimer - rawDt);
+            if (gameState.repairCooldown > 0) {
+                gameState.repairCooldown = Math.max(0, gameState.repairCooldown - rawDt);
+                const ov = document.getElementById('repair-cd-overlay');
+                ov.classList.remove('hidden');
+                ov.classList.add('flex');
+                ov.textContent = `${Math.ceil(gameState.repairCooldown)}s`;
+            } else {
+                document.getElementById('repair-cd-overlay').classList.add('hidden');
+            }
+
+            if (gameState.smokeCooldown > 0) {
+                gameState.smokeCooldown = Math.max(0, gameState.smokeCooldown - rawDt);
+                const ov = document.getElementById('smoke-cd-overlay');
+                ov.classList.remove('hidden');
+                ov.classList.add('flex');
+                ov.textContent = `${Math.ceil(gameState.smokeCooldown)}s`;
+            } else {
+                document.getElementById('smoke-cd-overlay').classList.add('hidden');
+            }
+
+            // A-3: Periodic Parachute Flare spawning in Phase 3 Night Battle
+            if (gameState.phase === 3) {
+                gameState.flareTimer -= dt;
+                if (gameState.flareTimer <= 0) {
+                    gameState.flareTimer = 9.5;
+                    spawnParachuteFlare(
+                        new THREE.Vector3((Math.random() - 0.5) * 26, 27, gameState.stageZOffset - 18 - Math.random() * 20),
+                        Math.random() > 0.35 ? 0xfef08a : 0xfca5a5
+                    );
+                }
+            }
+
+            // Update Parachute Flares
+            for (let i = parachuteFlares.length - 1; i >= 0; i--) {
+                const fl = parachuteFlares[i];
+                fl.life -= dt;
+                if (fl.life <= 0 || fl.mesh.position.y <= 2.5) {
+                    scene.remove(fl.mesh);
+                    parachuteFlares.splice(i, 1);
+                    continue;
+                }
+                // Slowly descend & sway in wind
+                fl.mesh.position.y -= 1.35 * dt;
+                fl.mesh.position.x += Math.sin(clock.getElapsedTime() * 1.5 + fl.seed) * 0.8 * dt;
+                fl.light.intensity = (2.2 + Math.sin(clock.getElapsedTime() * 18 + fl.seed) * 0.45) * (fl.life / fl.maxLife);
+
+                // Emit trailing white flare smoke
+                if (Math.random() < 0.35) {
+                    spawnParticle({
+                        pos: fl.mesh.position.clone(),
+                        vel: new THREE.Vector3((Math.random() - 0.5) * 0.5, 1.1, (Math.random() - 0.5) * 0.5),
+                        color: 0xfef08a,
+                        size: 0.38,
+                        life: 0.7,
+                        grow: 1.5
+                    });
+                }
+            }
+
+            // Update Transient Dynamic PointLights
+            for (let i = dynamicLights.length - 1; i >= 0; i--) {
+                const dl = dynamicLights[i];
+                dl.elapsed += rawDt;
+                if (dl.elapsed >= dl.duration) {
+                    scene.remove(dl.light);
+                    dynamicLights.splice(i, 1);
+                    continue;
+                }
+                dl.light.intensity = dl.maxIntensity * (1 - dl.elapsed / dl.duration);
+            }
+
+            // A-1: Update 3D Bomber / Attack Squadron Flight Path
+            for (let i = airSquadrons.length - 1; i >= 0; i--) {
+                const sq = airSquadrons[i];
+                sq.elapsed += dt;
+                if (sq.elapsed < 0) continue;
+
+                const p = sq.elapsed / sq.duration;
+                if (p >= 1) {
+                    scene.remove(sq.model.root);
+                    airSquadrons.splice(i, 1);
+                    continue;
+                }
+
+                // Spin propeller blades rapidly
+                sq.model.prop.rotation.z += dt * 42;
+
+                // Quadratic Bezier dive curve (Start -> Low Dive Apex -> High Climb Exit)
+                const invP = 1 - p;
+                const pos = new THREE.Vector3()
+                    .addScaledVector(sq.startPos, invP * invP)
+                    .addScaledVector(sq.diveApex, 2 * invP * p)
+                    .addScaledVector(sq.exitPos, p * p);
+
+                // Next point for smooth aircraft pitch/orientation
+                const nextP = Math.min(1, p + 0.02);
+                const invNext = 1 - nextP;
+                const nextPos = new THREE.Vector3()
+                    .addScaledVector(sq.startPos, invNext * invNext)
+                    .addScaledVector(sq.diveApex, 2 * invNext * nextP)
+                    .addScaledVector(sq.exitPos, nextP * nextP);
+
+                sq.model.root.position.copy(pos);
+                sq.model.root.lookAt(nextPos);
+
+                // Autofire nose cannons during the dive phase (0.18 < p < 0.52)
+                sq.strafeTimer -= dt;
+                if (p > 0.18 && p < 0.52 && sq.strafeTimer <= 0) {
+                    sq.strafeTimer = 0.09;
+                    const gunOrigin = pos.clone().add(new THREE.Vector3(0, -0.5, -2.5));
+                    const groundHit = new THREE.Vector3(
+                        sq.diveApex.x + (Math.random() - 0.5) * 8,
+                        0.4,
+                        sq.diveApex.z + (Math.random() - 0.5) * 8
+                    );
+                    spawnProjectile({
+                        from: gunOrigin,
+                        to: groundHit,
+                        speed: 95,
+                        arcHeight: 0.2,
+                        color: 0xfef08a,
+                        size: 0.2,
+                        damage: 28,
+                        penetration: 65,
+                        splash: 2.5,
+                        isAllied: true,
+                        shellType: 'MG'
+                    });
+                }
+
+                // Release Heavy 500kg Aerial Bomb at dive apex (p >= 0.48)
+                if (!sq.droppedBomb && p >= 0.48) {
+                    sq.droppedBomb = true;
+                    sq.model.bomb.visible = false;
+                    const bombTarget = new THREE.Vector3(
+                        sq.diveApex.x + (Math.random() - 0.5) * 5,
+                        0,
+                        sq.diveApex.z + (Math.random() - 0.5) * 5
+                    );
+                    spawnProjectile({
+                        from: pos.clone(),
+                        to: bombTarget,
+                        speed: 45,
+                        arcHeight: 1.5,
+                        color: 0xef4444,
+                        size: 0.52,
+                        damage: 340,
+                        penetration: 999,
+                        splash: 10.5,
+                        isAllied: true,
+                        shellType: 'HEAVY'
+                    });
+                }
+            }
+
+            // Recover Allied Barrel Recoil
+            alliedUnits.forEach(u => {
+                if (u.recoil > 0) {
+                    u.recoil = Math.max(0, u.recoil - dt * 2.5);
+                    u.mesh.gun.position.z = -0.9 + u.recoil * 0.7;
+                }
+            });
+
+            const alliedFrontZ = gameState.stageZOffset + 11;
+            enemyUnits.forEach(enemy => {
+                if (!enemy.alive) {
+                    if (Math.random() < 0.22) {
+                        spawnParticle({
+                            pos: enemy.mesh.root.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.2, 1.4, (Math.random() - 0.5) * 1.2)),
+                            vel: new THREE.Vector3((Math.random() - 0.5) * 0.6, 2.2 + Math.random() * 1.2, (Math.random() - 0.5) * 0.6),
+                            color: Math.random() < 0.35 ? 0xea580c : 0x1c1917,
+                            size: 0.65 + Math.random() * 0.5,
+                            life: 1.1,
+                            grow: 1.5
+                        });
+                    }
+                    return;
+                }
+
+                // A-4: Engine Fire continuous burn damage & rear deck flame particles
+                if (enemy.engineFire) {
+                    if (Math.random() < 0.45) {
+                        spawnParticle({
+                            pos: enemy.mesh.root.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.9, 1.5, 1.1)),
+                            vel: new THREE.Vector3((Math.random() - 0.5) * 0.8, 2.6 + Math.random() * 1.5, (Math.random() - 0.5) * 0.8),
+                            color: Math.random() < 0.55 ? 0xf97316 : 0x18181b,
+                            size: 0.48 + Math.random() * 0.35,
+                            life: 0.65,
+                            grow: 1.4
+                        });
+                    }
+                    enemy.burnTimer += dt;
+                    if (enemy.burnTimer >= 1.0) {
+                        enemy.burnTimer = 0;
+                        enemy.hp = Math.max(0, enemy.hp - 28);
+                        const pct = Math.max(0, (enemy.hp / enemy.maxHp) * 100);
+                        if (enemy.hpFillEl) enemy.hpFillEl.style.width = `${pct}%`;
+                        spawnFloatingText(
+                            enemy.mesh.root.position.clone().add(new THREE.Vector3(0, 2.9, 0)),
+                            '🔥 -28',
+                            'text-orange-400 font-bold text-[11px]'
+                        );
+                        if (enemy.hp <= 0) {
+                            destroyEnemyUnit(enemy);
+                            return;
+                        }
+                    }
+                }
+
+                // Advance enemy tanks forward unless immobilized by Track Break (A-4)
+                const stopZ = gameState.stageZOffset - 12;
+                if (!enemy.trackBroken && enemy.speed > 0 && enemy.mesh.root.position.z < stopZ) {
+                    enemy.mesh.root.position.z += enemy.speed * dt;
+                }
+
+                if (enemy.uiElement) {
+                    const topPos = enemy.mesh.root.position.clone().add(new THREE.Vector3(0, enemy.type === 'CITADEL' ? 8.8 : 3.2, 0));
+                    const screen = worldToScreen(topPos);
+                    if (screen.visible && !inKillCam) {
+                        enemy.uiElement.style.left = `${screen.x}px`;
+                        enemy.uiElement.style.top = `${screen.y}px`;
+                        enemy.uiElement.style.opacity = '1';
+                    } else {
+                        enemy.uiElement.style.opacity = '0';
+                    }
+                }
+
+                enemy.fireTimer -= dt;
+                if (enemy.fireTimer <= 0) {
+                    enemy.fireTimer = enemy.fireInterval + Math.random() * 1.2;
+                    const muzzlePos = enemy.mesh.root.position.clone().add(new THREE.Vector3(0, 1.8, 2.2));
+                    const targetAlliedPos = new THREE.Vector3((Math.random() - 0.5) * 16, 0.8, alliedFrontZ);
+
+                    createMuzzleFlash(muzzlePos, enemy.type === 'CITADEL' ? 2.5 : 1.3);
+                    sfx.playCannon(enemy.type === 'HEAVY' || enemy.type === 'CITADEL' ? 'heavy' : 'medium');
+
+                    spawnProjectile({
+                        from: muzzlePos,
+                        to: targetAlliedPos,
+                        speed: 42,
+                        arcHeight: 2.5,
+                        color: 0xef4444,
+                        size: 0.34,
+                        damage: enemy.dmg,
+                        penetration: 100,
+                        splash: 2.5,
+                        isAllied: false,
+                        shellType: 'ENEMY'
+                    });
+                }
+            });
+
+            // Update Parabolic Projectiles
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.elapsed += dt;
+                const t = Math.min(1, p.elapsed / p.duration);
+
+                const currentPos = new THREE.Vector3().lerpVectors(p.from, p.to, t);
+                currentPos.y += Math.sin(t * Math.PI) * p.arcHeight;
+
+                p.mesh.lookAt(currentPos);
+                p.mesh.position.copy(currentPos);
+
+                // Emit wind vortex / smoke trail on Rockets or Kill-Cam Heavy Shells
+                if ((p.shellType === 'ROCKET' || gameState.activeKillCamShell === p) && Math.random() < 0.8) {
+                    spawnParticle({
+                        pos: currentPos.clone(),
+                        vel: new THREE.Vector3((Math.random() - 0.5) * 0.6, 0.3, (Math.random() - 0.5) * 0.6),
+                        color: gameState.activeKillCamShell === p ? 0xfef08a : 0xe7e5e4,
+                        size: gameState.activeKillCamShell === p ? 0.32 : 0.45,
+                        life: 0.45,
+                        grow: 1.5
+                    });
+                }
+
+                if (t >= 1) {
+                    scene.remove(p.mesh);
+                    handleProjectileImpact(p);
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            // Update Popped-Off Flying Tank Turrets
+            for (let i = flyingTurrets.length - 1; i >= 0; i--) {
+                const ft = flyingTurrets[i];
+                ft.vel.y -= 26 * dt;
+                ft.mesh.position.addScaledVector(ft.vel, dt);
+                ft.mesh.rotation.x += ft.rotVel.x * dt;
+                ft.mesh.rotation.y += ft.rotVel.y * dt;
+                ft.mesh.rotation.z += ft.rotVel.z * dt;
+
+                if (Math.random() < 0.5) {
+                    spawnParticle({
+                        pos: ft.mesh.position.clone(),
+                        vel: new THREE.Vector3(0, 1.5, 0),
+                        color: 0xf97316,
+                        size: 0.45,
+                        life: 0.35,
+                        grow: 1.3
+                    });
+                }
+
+                if (ft.mesh.position.y <= 0.5) {
+                    ft.mesh.position.y = 0.5;
+                    if (ft.bounces < 1) {
+                        ft.bounces++;
+                        ft.vel.y = Math.abs(ft.vel.y) * 0.35;
+                        ft.vel.x *= 0.5;
+                        ft.vel.z *= 0.5;
+                        createImpactSparks(ft.mesh.position, 8);
+                    } else {
+                        flyingTurrets.splice(i, 1);
+                    }
+                }
+            }
+
+            // Update Particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const pt = particles[i];
+                pt.life -= dt;
+                if (pt.life <= 0) {
+                    scene.remove(pt.mesh);
+                    particles.splice(i, 1);
+                    continue;
+                }
+                pt.vel.y -= pt.gravity * dt;
+                pt.mesh.position.addScaledVector(pt.vel, dt);
+                const scale = 1 + (1 - pt.life / pt.maxLife) * pt.grow;
+                pt.mesh.scale.setScalar(scale);
+                pt.mesh.material.opacity = (pt.life / pt.maxLife) * 0.85;
+            }
+
+            // Update Shockwaves
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const sw = shockwaves[i];
+                sw.elapsed += dt;
+                const progress = sw.elapsed / sw.duration;
+                if (progress >= 1) {
+                    scene.remove(sw.mesh);
+                    shockwaves.splice(i, 1);
+                    continue;
+                }
+                const s = 1 + progress * sw.maxScale;
+                sw.mesh.scale.set(s, s, 1);
+                sw.mesh.material.opacity = (1 - progress) * 0.85;
+            }
+
+            if (gameState.activeKillCamShell) {
+                // A-2: Follow directly behind and slightly above the flying heavy shell!
+                const sh = gameState.activeKillCamShell;
+                const shellPos = sh.mesh.position;
+                camera.position.set(shellPos.x + 1.4, shellPos.y + 1.6, shellPos.z + 5.5);
+                camera.lookAt(sh.to.x, sh.to.y + 1.0, sh.to.z);
+            } else if (gameState.killCamHoldTimer > 0 && gameState.killCamImpactPos) {
+                // Hold camera orbiting the impact explosion / flying turret for 1 second
+                gameState.killCamHoldTimer -= rawDt;
+                const imp = gameState.killCamImpactPos;
+                camera.position.x += ((imp.x + 4.5) - camera.position.x) * rawDt * 4;
+                camera.position.y += ((imp.y + 4.2) - camera.position.y) * rawDt * 4;
+                camera.position.z += ((imp.z + 9.5) - camera.position.z) * rawDt * 4;
+                camera.lookAt(imp.x, imp.y + 1.5, imp.z);
+
+                if (gameState.killCamHoldTimer <= 0) {
+                    const overlay = document.getElementById('killcam-overlay');
+                    overlay.classList.add('hidden');
+                    overlay.classList.remove('flex');
+                }
+            } else {
+                let desiredCamX = 0;
+                let desiredCamY = 30;
+                let desiredCamZ = gameState.stageZOffset + 34;
+                let lookTarget = new THREE.Vector3(0, 0, gameState.stageZOffset - 18);
+
+                if (gameState.cameraMode === 0) {
+                    desiredCamX = currentAimPoint.x * 0.15;
+                    desiredCamY = 30;
+                    desiredCamZ = gameState.stageZOffset + 34;
+                    lookTarget.set(currentAimPoint.x * 0.25, 0, gameState.stageZOffset - 18);
+                } else if (gameState.cameraMode === 1) {
+                    desiredCamX = currentAimPoint.x * 0.22;
+                    desiredCamY = 5.2;
+                    desiredCamZ = gameState.stageZOffset + 16.5;
+                    lookTarget.set(currentAimPoint.x * 0.65, 1.2, currentAimPoint.z);
+                } else if (gameState.cameraMode === 2) {
+                    desiredCamX = currentAimPoint.x * 0.35;
+                    desiredCamY = 3.2;
+                    desiredCamZ = gameState.stageZOffset + 9.5;
+                    lookTarget.set(currentAimPoint.x, 1.0, currentAimPoint.z);
+                    updateScopeTelemetry();
+                } else if (gameState.cameraMode === 3) {
+                    desiredCamX = 0;
+                    desiredCamY = 54;
+                    desiredCamZ = gameState.stageZOffset + 4;
+                    lookTarget.set(0, 0, gameState.stageZOffset - 22);
+                } else if (gameState.cameraMode === 4) {
+                    const orbitT = clock.getElapsedTime() * 0.25;
+                    desiredCamX = Math.cos(orbitT) * 24;
+                    desiredCamY = 12;
+                    desiredCamZ = gameState.stageZOffset + 6 + Math.sin(orbitT) * 10;
+                    lookTarget.set(0, 1.5, gameState.stageZOffset - 18);
+                }
+
+                camera.position.x += (desiredCamX - camera.position.x) * rawDt * 4.5;
+                camera.position.y += (desiredCamY - camera.position.y) * rawDt * 4.5;
+                camera.position.z += (desiredCamZ - camera.position.z) * rawDt * 4.0;
+
+                if (gameState.cameraShake > 0) {
+                    camera.position.x += (Math.random() - 0.5) * gameState.cameraShake;
+                    camera.position.y += (Math.random() - 0.5) * gameState.cameraShake;
+                    gameState.cameraShake = Math.max(0, gameState.cameraShake - rawDt * 2.8);
+                }
+
+                camera.lookAt(lookTarget);
+            }
+
+            reticleRing.rotation.z += rawDt * 1.8;
+            renderRadarMinimap();
+        }
+
+        /**
+         * ============================================================================
+         * 11. GAME FLOW CONTROLLERS (PROLOGUE, START, RESTART, END GAME)
+         * ============================================================================
+         */
+        let storyTypewriterTimer = null;
+
+        function renderStoryChapter(index) {
+            gameState.storyIndex = index;
+            const ch = STORY_CHAPTERS[index];
+
+            document.getElementById('story-chapter-tag').textContent = ch.tag;
+            document.getElementById('story-chapter-title').textContent = ch.title;
+            document.getElementById('story-coord-text').textContent = ch.coord;
+
+            for (let i = 0; i < STORY_CHAPTERS.length; i++) {
+                const dot = document.getElementById(`story-dot-${i}`);
+                if (dot) {
+                    dot.className = i <= index
+                        ? 'w-6 h-1.5 rounded-full bg-amber-500 transition-all'
+                        : 'w-6 h-1.5 rounded-full bg-stone-700 transition-all';
+                }
+            }
+
+            const nextLabel = document.getElementById('btn-story-next-label');
+            if (index === STORY_CHAPTERS.length - 1) {
+                nextLabel.textContent = '사령부 작전실 입장 (진영 선택)';
+            } else {
+                nextLabel.textContent = `다음 기록 보기 (${index + 1}/${STORY_CHAPTERS.length})`;
+            }
+
+            const bodyEl = document.getElementById('story-body-text');
+            bodyEl.textContent = '';
+            if (storyTypewriterTimer) clearInterval(storyTypewriterTimer);
+
+            let charIdx = 0;
+            storyTypewriterTimer = setInterval(() => {
+                if (charIdx < ch.body.length) {
+                    bodyEl.textContent += ch.body.charAt(charIdx);
+                    if (charIdx % 3 === 0) sfx.playTypewriterClick();
+                    charIdx++;
+                } else {
+                    clearInterval(storyTypewriterTimer);
+                }
+            }, 22);
+        }
+
+        function advanceStoryChapter() {
+            sfx.init();
+            sfx.playCannon('medium');
+            if (gameState.storyIndex < STORY_CHAPTERS.length - 1) {
+                renderStoryChapter(gameState.storyIndex + 1);
+            } else {
+                skipStoryToFactionSelect();
+            }
+        }
+
+        function skipStoryToFactionSelect() {
+            if (storyTypewriterTimer) clearInterval(storyTypewriterTimer);
+            gameState.inPrologue = false;
+            document.getElementById('story-prologue-modal').classList.add('hidden');
+            const introModal = document.getElementById('intro-modal');
+            introModal.classList.remove('hidden');
+            introModal.classList.add('flex');
+            runIntroTypewriter();
+        }
+
+        function replayStoryPrologue() {
+            gameState.inPrologue = true;
+            const introModal = document.getElementById('intro-modal');
+            introModal.classList.add('hidden');
+            introModal.classList.remove('flex');
+            document.getElementById('story-prologue-modal').classList.remove('hidden');
+            renderStoryChapter(0);
+        }
+
+        function startGame(factionKey) {
+            sfx.init();
+            gameState.inPrologue = false;
+            gameState.faction = FACTIONS[factionKey];
+            gameState.running = true;
+            gameState.phase = 1;
+            gameState.phaseTransitioning = false;
+            gameState.stageZOffset = 0;
+            gameState.timeElapsed = 0;
+            gameState.alliedHP = 1000;
+            gameState.alliedMaxHP = 1000;
+            gameState.mgHeat = 0;
+            gameState.mgOverheated = false;
+            gameState.weaponCooldowns = [0, 0, 0, 0];
+            gameState.repairCooldown = 0;
+            gameState.smokeCooldown = 0;
+            gameState.smokeActiveTimer = 0;
+            gameState.stats.kills = 0;
+            gameState.stats.shots = 0;
+
+            // Update HUD Faction Badge & Weapon Cards
+            const badge = document.getElementById('hud-faction-badge');
+            badge.textContent = gameState.faction.badge;
+            badge.className = `w-8 h-8 sm:w-9 sm:h-9 rounded-lg ${gameState.faction.badgeBg} border border-amber-400/70 flex items-center justify-center font-bold text-base shadow-inner shrink-0`;
+
+            const isGerman = factionKey === 'GERMAN';
+            document.getElementById('wpn-cal-0').textContent = isGerman ? '7.92mm' : '7.62mm';
+            document.getElementById('wpn-cal-1').textContent = isGerman ? '75mm AP' : '85mm AP';
+            document.getElementById('wpn-cal-2').textContent = isGerman ? '88mm KwK' : '152mm HE';
+            document.getElementById('wpn-cal-3').textContent = isGerman ? 'Ju-87/15cm' : '132mmx14';
+
+            gameState.faction.weapons.forEach((w, idx) => {
+                document.getElementById(`wpn-name-${idx}`).textContent = w.name;
+                document.getElementById(`wpn-sub-${idx}`).textContent = `관통 ${w.penetration === 999 ? '절대' : w.penetration + 'mm'} · ${w.sub}`;
+            });
+
+            // Reset Phase Step Indicator
+            document.getElementById('step-p1').className = 'h-1.5 w-10 sm:w-14 rounded-full bg-amber-500 transition-all';
+            document.getElementById('step-p2').className = 'h-1.5 w-10 sm:w-14 rounded-full bg-stone-700 transition-all';
+            document.getElementById('step-p3').className = 'h-1.5 w-10 sm:w-14 rounded-full bg-stone-700 transition-all';
+
+            // Show HUDs & Hide Modals
+            document.getElementById('story-prologue-modal').classList.add('hidden');
+            document.getElementById('intro-modal').classList.add('hidden');
+            document.getElementById('intro-modal').classList.remove('flex');
+            document.getElementById('result-modal').classList.add('hidden');
+            document.getElementById('result-modal').classList.remove('flex');
+
+            const topHud = document.getElementById('top-hud');
+            const botHud = document.getElementById('bottom-hud');
+            topHud.classList.remove('hidden');
+            topHud.classList.add('flex');
+            botHud.classList.remove('hidden');
+            botHud.classList.add('flex');
+
+            updateAlliedHPBar();
+            setCameraMode(0);
+            selectWeapon(1); // Start with Medium Tank Salvo ready
+
+            deployAlliedLine();
+            spawnPhaseWave(1);
+        }
+
+        function endGame(isVictory) {
+            gameState.running = false;
+            const modal = document.getElementById('result-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            const title = document.getElementById('result-title');
+            const sub = document.getElementById('result-subtitle');
+            const badge = document.getElementById('result-badge');
+
+            if (isVictory) {
+                badge.textContent = 'OPERATION CITADEL // COMPLETE';
+                title.textContent = 'VICTORY!';
+                title.className = 'text-3xl sm:text-4xl font-military text-amber-400 mb-2';
+                sub.textContent = `${gameState.faction.name} 기갑사단이 적의 최종 사령부 요새를 완전히 함락시켰습니다!`;
+            } else {
+                badge.textContent = 'DEFENSE LINE COLLAPSED';
+                title.textContent = 'DEFEAT';
+                title.className = 'text-3xl sm:text-4xl font-military text-red-500 mb-2';
+                sub.textContent = '적의 집중 포격으로 아군 기갑 방어선이 무너졌습니다. 전술을 재정비하십시오.';
+            }
+
+            const mins = String(Math.floor(gameState.timeElapsed / 60)).padStart(2, '0');
+            const secs = String(Math.floor(gameState.timeElapsed % 60)).padStart(2, '0');
+            const hpPct = Math.round((gameState.alliedHP / gameState.alliedMaxHP) * 100);
+
+            document.getElementById('stat-time').textContent = `${mins}:${secs}`;
+            document.getElementById('stat-kills').textContent = `${gameState.stats.kills}기 격파`;
+            document.getElementById('stat-shots').textContent = `${gameState.stats.shots}발`;
+            document.getElementById('stat-hp').textContent = `${hpPct}%`;
+
+            let rank = '★ B-RANK (전선 지휘관)';
+            if (isVictory && hpPct >= 70) rank = '★★★ S-RANK (강철의 원수)';
+            else if (isVictory && hpPct >= 40) rank = '★★ A-RANK (기갑 에이스)';
+            else if (!isVictory) rank = 'C-RANK (재출격 요망)';
+            document.getElementById('stat-rank').textContent = rank;
+        }
+
+        function restartSameFaction() {
+            startGame(gameState.faction.id);
+        }
+
+        function returnToFactionSelect() {
+            document.getElementById('result-modal').classList.add('hidden');
+            document.getElementById('result-modal').classList.remove('flex');
+            document.getElementById('top-hud').classList.add('hidden');
+            document.getElementById('bottom-hud').classList.add('hidden');
+            const introModal = document.getElementById('intro-modal');
+            introModal.classList.remove('hidden');
+            introModal.classList.add('flex');
+        }
+
+        function onWindowResize() {
+            if (!camera || !renderer) return;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        let briefingTimer = null;
+        function runIntroTypewriter() {
+            const text = '사령관 각하, 전선의 모든 화기(중기관총, 주력전차, 대구경 중포, 다연장 로켓)가 발사 준비를 마쳤습니다. 전투 중 상단의 [사령부 / 전차장 / 조준경 / 항공정찰 / 측면시점] 버튼으로 언제든 카메라 시점을 전환할 수 있습니다. 출격할 군단을 선택하십시오!';
+            const target = document.getElementById('typewriter-text');
+            target.textContent = '';
+            if (briefingTimer) clearInterval(briefingTimer);
+            let idx = 0;
+            briefingTimer = setInterval(() => {
+                if (idx < text.length) {
+                    target.textContent += text.charAt(idx);
+                    idx++;
+                } else {
+                    clearInterval(briefingTimer);
+                }
+            }, 20);
+        }
+
+        // Start 3D Engine and Cinematic Story Prologue on Window Load
+        window.onload = function () {
+            initThreeScene();
+            deployAlliedLine();
+            renderStoryChapter(0);
+            animate();
+        };
+    </script>
+</body>
+</html>
